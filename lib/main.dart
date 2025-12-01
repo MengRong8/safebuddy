@@ -1,11 +1,5 @@
 // SafeBuddy Flutter App (主程式碼)
 // 負責 UI 顯示、前端邏輯、以及與 Node.js 後端 API 溝通。
-//
-// ⚠️ 運行此程式碼前，請確認已在專案的 pubspec.yaml 中加入以下依賴：
-// dependencies:
-//   flutter:
-//     sdk: flutter
-//   http: ^1.2.1  <--- 需要此套件來發送 HTTP 請求給後端
 
 import 'package:flutter/material.dart';
 import 'dart:async';
@@ -17,19 +11,18 @@ import 'package:window_manager/window_manager.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 桌面平台視窗設定
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     await windowManager.ensureInitialized();
 
     const windowOptions = WindowOptions(
-      size: Size(414, 896), // iPhone 11 Pro Max 尺寸
-      center: true, // 視窗置中
+      size: Size(428, 926),
+      center: true,
       backgroundColor: Colors.transparent,
       skipTaskbar: false,
       titleBarStyle: TitleBarStyle.normal,
-      title: 'SafeBuddy 貼身保鑣',
-      minimumSize: Size(375, 667), // 不能小於 iPhone SE
-      maximumSize: Size(428, 926), // 不能大於 iPhone 14 Pro Max
+      title: 'SafeBuddy',
+      minimumSize: Size(375, 667),
+      maximumSize: Size(428, 926),
     );
 
     await windowManager.waitUntilReadyToShow(windowOptions, () async {
@@ -49,7 +42,7 @@ class SafeBuddyApp extends StatelessWidget {
     return MaterialApp(
       title: 'SafeBuddy',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
         useMaterial3: true,
       ),
       home: const SafeBuddyHomePage(),
@@ -58,18 +51,14 @@ class SafeBuddyApp extends StatelessWidget {
   }
 }
 
-// --- 1. 常量與模擬資料 ---
-
-// 您的 Node.js 後端服務位址
+// --- 常量 ---
 const String backendUrl = 'http://localhost:3000/api';
-// ❌ 不要用 10.0.2.2（那是 Android 模擬器專用）
 const String mockUserId = 'SAFEBUDDY_USER_123';
 const String mockContactNumber = '0987654321';
-const double mockLatitude = 25.0478; // 模擬當前位置 (台北車站)
+const double mockLatitude = 25.0478;
 const double mockLongitude = 121.5175;
 
-// --- 2. 資料模型 ---
-
+// --- 資料模型 ---
 class RiskInfo {
   final int riskScore;
   final String message;
@@ -90,8 +79,7 @@ class RiskInfo {
   }
 }
 
-// --- 3. 介面主體 ---
-
+// --- 主畫面 ---
 class SafeBuddyHomePage extends StatefulWidget {
   const SafeBuddyHomePage({super.key});
 
@@ -99,39 +87,53 @@ class SafeBuddyHomePage extends StatefulWidget {
   State<SafeBuddyHomePage> createState() => _SafeBuddyHomePageState();
 }
 
-class _SafeBuddyHomePageState extends State<SafeBuddyHomePage> {
-  // 狀態變數
+class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
+    with SingleTickerProviderStateMixin {
   String _bleStatus = '已連線';
   bool _isAlerting = false;
   int _countdown = 10;
   String? _currentAlertId;
-  String _riskMessage = '您好！我是 SafeBuddy 小精靈，很高興為您服務。';
-  String? _statusMessage;
+  String _riskMessage = '';
+  bool _showTopNotification = false;
+  bool _showCenterDialog = false;
   bool _isLoading = false;
 
   Timer? _timer;
   Timer? _bleSimulator;
+  AnimationController? _slideController;
+  Animation<Offset>? _slideAnimation;
 
   @override
   void initState() {
     super.initState();
-    _checkRiskArea(); // App 啟動時先檢查風險
-    _startBleSimulator(); // 模擬 BLE 連線狀態變化
+    _checkRiskArea();
+    _startBleSimulator();
+
+    // 上方通知滑動動畫
+    _slideController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, -1),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _slideController!,
+      curve: Curves.easeOut,
+    ));
   }
 
   @override
   void dispose() {
     _timer?.cancel();
     _bleSimulator?.cancel();
+    _slideController?.dispose();
     super.dispose();
   }
 
-  // --- 4. HTTP 服務 (與 Node.js 後端溝通) ---
-
-  // 呼叫後端 API 檢查區域風險
+  // --- API 呼叫 ---
   Future<void> _checkRiskArea() async {
     setState(() => _isLoading = true);
-    _setStatusMessage('🔍 正在檢查當前位置的風險評估...');
 
     try {
       final response = await http
@@ -148,27 +150,23 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage> {
       if (response.statusCode == 200) {
         final result = jsonDecode(utf8.decode(response.bodyBytes));
         final riskInfo = RiskInfo.fromJson(result);
+
         setState(() {
-          _riskMessage = '${riskInfo.message} (分數: ${riskInfo.riskScore})';
-          _setStatusMessage('✅ 風險檢查完成。');
+          _riskMessage = riskInfo.message;
+          if (riskInfo.isHighRisk) {
+            _showTopNotificationBanner();
+          }
         });
-      } else {
-        _handleApiError('風險檢查失敗: ${response.statusCode}');
       }
-    } on TimeoutException {
-      _handleApiError('連線超時，請檢查後端服務是否運行。');
     } catch (e) {
-      _handleApiError('無法連線至後端伺服器 (請確認 Node.js 服務運行中)。');
       print('API Error: $e');
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
-  // 倒數結束後，觸發後端警報
   Future<void> _triggerBackendAlert() async {
     setState(() => _isLoading = true);
-    _setStatusMessage('📡 倒數結束，App 正在向後端回報緊急事件...');
 
     try {
       final response = await http
@@ -187,34 +185,27 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage> {
 
       if (response.statusCode == 200) {
         final result = jsonDecode(utf8.decode(response.bodyBytes));
-        setState(() {
-          _currentAlertId = result['alertId'];
-          _setStatusMessage('✅ 緊急事件已回報後端！Alert ID: $_currentAlertId。簡訊已送出。');
-        });
-      } else {
-        _handleApiError('緊急事件回報失敗: ${response.statusCode}');
+        setState(() => _currentAlertId = result['alertId']);
       }
     } catch (e) {
-      _handleApiError('無法連線至後端伺服器。');
       print('API Error: $e');
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
-  // 取消警報
   Future<void> _cancelAlert() async {
     setState(() => _isLoading = true);
-    _setStatusMessage('📡 App 正在回報平安，通知後端取消警報...');
 
     _timer?.cancel();
     setState(() {
       _isAlerting = false;
+      _showCenterDialog = false;
       _countdown = 10;
     });
 
     try {
-      final response = await http
+      await http
           .post(
             Uri.parse('$backendUrl/cancel'),
             headers: {'Content-Type': 'application/json'},
@@ -222,127 +213,379 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage> {
           )
           .timeout(const Duration(seconds: 5));
 
-      if (response.statusCode == 200) {
-        setState(() {
-          _currentAlertId = null;
-          _setStatusMessage('✅ 警報已成功取消！已發送「回報平安」簡訊給聯絡人。');
-        });
-      } else {
-        _handleApiError('取消警報失敗: ${response.statusCode}');
-      }
+      setState(() => _currentAlertId = null);
     } catch (e) {
-      _handleApiError('無法連線至後端伺服器。');
       print('API Error: $e');
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
-  // --- 5. 前端邏輯與計時器 ---
-
-  // 模擬收到裝置警報
+  // --- 前端邏輯 ---
   void _simulateAlert() {
     if (_isAlerting) return;
 
     setState(() {
       _isAlerting = true;
+      _showCenterDialog = true;
       _countdown = 10;
-      _setStatusMessage('⚠️ 警報觸發！啟動 10 秒倒數，App 即將發送緊急通知。');
     });
 
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_countdown == 0) {
         timer.cancel();
-        setState(() => _isAlerting = false);
-        _triggerBackendAlert(); // 倒數結束，呼叫後端
-      } else {
         setState(() {
-          _countdown--;
+          _isAlerting = false;
+          _showCenterDialog = false;
         });
+        _triggerBackendAlert();
+      } else {
+        setState(() => _countdown--);
       }
     });
   }
 
-  // 模擬 BLE 距離提醒
-  void _startBleSimulator() {
-    _bleSimulator = Timer.periodic(const Duration(seconds: 30), (timer) {
-      setState(() {
-        _bleStatus = (_bleStatus == '已連線') ? '未連線' : '已連線';
-        if (_bleStatus == '未連線') {
-          _setStatusMessage('❗ 警示：SafeBuddy 裝置未攜帶或超出距離 (50m)！');
-        } else {
-          _setStatusMessage('✅ 裝置連線恢復。');
-        }
+  void _showTopNotificationBanner() {
+    setState(() => _showTopNotification = true);
+    _slideController?.forward();
+
+    Future.delayed(const Duration(seconds: 5), () {
+      _slideController?.reverse().then((_) {
+        setState(() => _showTopNotification = false);
       });
     });
   }
 
-  // 錯誤處理
-  void _handleApiError(String message) {
-    setState(() {
-      _statusMessage = '❌ $message';
+  void _startBleSimulator() {
+    _bleSimulator = Timer.periodic(const Duration(seconds: 30), (timer) {
+      setState(() {
+        _bleStatus = (_bleStatus == '已連線') ? '未連線' : '已連線';
+      });
     });
   }
 
-  // 設定狀態訊息，並在 5 秒後清除
-  void _setStatusMessage(String message) {
-    setState(() {
-      _statusMessage = message;
-    });
-    Future.delayed(const Duration(seconds: 5), () {
-      if (_statusMessage == message) {
-        setState(() {
-          _statusMessage = null;
-        });
-      }
-    });
-  }
-
-  // --- 6. UI 建構 ---
-
+  // --- UI 建構 ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.indigo.shade50,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              const Text(
-                'SafeBuddy 貼身保鑣精靈',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.indigo,
+      body: Stack(
+        children: [
+          // 背景地圖區域（漸層模擬）
+          _buildMapBackground(),
+
+          // 右上角電量顯示
+          _buildBatteryIndicator(),
+
+          // 左下角地圖按鈕
+          _buildMapButton(),
+
+          // 底部使用者資訊卡片
+          _buildUserInfoCard(),
+
+          // 上方危險通知橫幅
+          if (_showTopNotification) _buildTopNotification(),
+
+          // 中間對話框（是否通知家人）
+          if (_showCenterDialog) _buildCenterDialog(),
+        ],
+      ),
+    );
+  }
+
+  // 背景地圖（漸層模擬）
+  Widget _buildMapBackground() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.teal.shade100,
+            Colors.teal.shade50,
+            Colors.white,
+          ],
+        ),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.map,
+              size: 120,
+              color: Colors.teal.shade200,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '地圖顯示區域',
+              style: TextStyle(
+                fontSize: 18,
+                color: Colors.teal.shade700,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '緯度: $mockLatitude',
+              style: TextStyle(fontSize: 12, color: Colors.teal.shade600),
+            ),
+            Text(
+              '經度: $mockLongitude',
+              style: TextStyle(fontSize: 12, color: Colors.teal.shade600),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 右上角電量顯示
+  Widget _buildBatteryIndicator() {
+    final bool isConnected = _bleStatus == '已連線';
+    return Positioned(
+      top: 50,
+      right: 16,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 8,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isConnected
+                  ? Icons.bluetooth_connected
+                  : Icons.bluetooth_disabled,
+              color: isConnected ? Colors.green : Colors.red,
+              size: 18,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              isConnected ? '🔋 85%' : '未連線',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: isConnected ? Colors.black : Colors.red,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 左下角地圖按鈕
+  Widget _buildMapButton() {
+    return Positioned(
+      bottom: 280,
+      left: 16,
+      child: Column(
+        children: [
+          FloatingActionButton(
+            heroTag: 'map',
+            onPressed: _checkRiskArea,
+            backgroundColor: Colors.white,
+            child: _isLoading
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.teal,
+                    ),
+                  )
+                : const Icon(Icons.location_searching, color: Colors.teal),
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton(
+            heroTag: 'alert',
+            onPressed: _simulateAlert,
+            backgroundColor: Colors.red.shade500,
+            child: const Icon(Icons.warning_amber_rounded, color: Colors.white),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 底部使用者資訊卡片
+  Widget _buildUserInfoCard() {
+    return Positioned(
+      bottom: 0,
+      left: 0,
+      right: 0,
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 10,
+              spreadRadius: 2,
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 30,
+                  backgroundColor: Colors.teal.shade100,
+                  child: const Icon(Icons.person, size: 35, color: Colors.teal),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Adventurer Name',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '使用者 ID: $mockUserId',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.teal.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.teal.shade200),
+              ),
+              child: Row(
+                children: [
+                  const Text('💡', style: TextStyle(fontSize: 24)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      _riskMessage.isEmpty
+                          ? '您好！我是 SafeBuddy 小精靈。點擊左側按鈕檢查周邊風險。'
+                          : _riskMessage,
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {},
+                    icon: const Icon(Icons.share, size: 18),
+                    label: const Text('分享位置'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.teal,
+                      side: BorderSide(color: Colors.teal.shade300),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {},
+                    icon: const Icon(Icons.settings, size: 18),
+                    label: const Text('設定'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.teal,
+                      side: BorderSide(color: Colors.teal.shade300),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 上方危險通知橫幅（從上往下滑出）
+  Widget _buildTopNotification() {
+    return SlideTransition(
+      position: _slideAnimation!,
+      child: Positioned(
+        top: 0,
+        left: 0,
+        right: 0,
+        child: Container(
+          margin: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.red.shade50,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.red.shade400, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.red.shade200,
+                blurRadius: 10,
+                spreadRadius: 2,
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.warning_amber_rounded,
+                  color: Colors.red.shade700, size: 28),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '該地區 22:00 過後人流較少',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.red.shade900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '請注意安全或提伴前行',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.red.shade700,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 20),
-
-              // 裝置連線狀態卡片
-              _buildDeviceStatusCard(),
-              const SizedBox(height: 15),
-
-              // 訊息/結果顯示
-              if (_statusMessage != null) _buildStatusMessage(),
-              const SizedBox(height: 15),
-
-              // AI 小精靈與危險區域提醒
-              _buildRiskPredictionCard(),
-              const SizedBox(height: 20),
-
-              // 警報倒數計時區塊
-              if (_isAlerting)
-                _buildAlertCountdownCard()
-              else
-                _buildSimulateAlertButton(),
-
-              const SizedBox(height: 20),
-
-              // 其他資訊/功能 (如電量、分享位置)
-              _buildAdditionalInfo(),
             ],
           ),
         ),
@@ -350,255 +593,94 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage> {
     );
   }
 
-  Widget _buildDeviceStatusCard() {
-    final bool isConnected = _bleStatus == '已連線';
-    return Card(
-      elevation: 5,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(
-          color: isConnected ? Colors.green.shade400 : Colors.red.shade400,
-          width: 2,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.bluetooth_connected,
-                  color:
-                      isConnected ? Colors.green.shade700 : Colors.red.shade700,
-                  size: 30,
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  _bleStatus,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: isConnected
-                        ? Colors.green.shade700
-                        : Colors.red.shade700,
-                  ),
-                ),
-              ],
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                const Text(
-                  '電量顯示',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-                Text(
-                  isConnected ? '🔋 85%' : 'N/A',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: isConnected ? Colors.black : Colors.grey,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRiskPredictionCard() {
-    return Card(
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Container(
-        padding: const EdgeInsets.all(20.0),
-        decoration: BoxDecoration(
-          color: Colors.indigo.shade50,
-          borderRadius: BorderRadius.circular(20),
-          border: Border(
-            left: BorderSide(color: Colors.indigo.shade400, width: 4),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Text('💡', style: TextStyle(fontSize: 24)),
-                const SizedBox(width: 8),
-                Text(
-                  '小精靈提醒',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                    color: Colors.indigo.shade800,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              _riskMessage,
-              style: const TextStyle(fontSize: 14, color: Colors.black87),
-            ),
-            const SizedBox(height: 15),
-            ElevatedButton(
-              onPressed: _isLoading ? null : _checkRiskArea,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.indigo,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                minimumSize: const Size(double.infinity, 45),
-                elevation: 5,
-              ),
-              child: _isLoading && !_isAlerting
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
-                      ),
-                    )
-                  : const Text('🧭 查看附近區域人流與風險'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAlertCountdownCard() {
+  // 中間對話框（是否通知家人）
+  Widget _buildCenterDialog() {
     return Container(
-      padding: const EdgeInsets.all(25.0),
-      decoration: BoxDecoration(
-        color: Colors.red.shade50,
-        borderRadius: BorderRadius.circular(25),
-        border: Border.all(color: Colors.red.shade600, width: 3),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.red.shade200,
-            blurRadius: 10,
-            spreadRadius: 2,
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          const Text(
-            '🚨 緊急警報已觸發 🚨',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              color: Colors.red,
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 20.0),
-            child: Text(
-              '$_countdown s',
-              style: const TextStyle(
-                fontSize: 56,
-                fontWeight: FontWeight.w900,
-                color: Colors.red,
+      color: Colors.black.withOpacity(0.5),
+      child: Center(
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 30),
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 20,
+                spreadRadius: 5,
               ),
-            ),
+            ],
           ),
-          const Text(
-            '將於倒數結束後自動發送簡訊給聯絡人！',
-            style: TextStyle(fontSize: 14, color: Colors.red),
-          ),
-          const SizedBox(height: 15),
-          ElevatedButton(
-            onPressed: _isLoading ? null : _cancelAlert,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green.shade600,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(30),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.warning_amber_rounded,
+                  size: 50,
+                  color: Colors.red.shade700,
+                ),
               ),
-              minimumSize: const Size(double.infinity, 55),
-              elevation: 8,
-            ),
-            child: Text(
-              _isLoading ? '處理中...' : '我沒事，取消警報',
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
+              const SizedBox(height: 20),
+              Text(
+                '緊急警報倒數',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red.shade900,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '$_countdown 秒',
+                style: TextStyle(
+                  fontSize: 56,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.red.shade700,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                '倒數結束後將通知緊急聯絡人',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _cancelAlert,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green.shade500,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 5,
+                  ),
+                  child: const Text(
+                    '我沒事',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSimulateAlertButton() {
-    return ElevatedButton(
-      onPressed: _isLoading ? null : _simulateAlert,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.red.shade500,
-        foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        minimumSize: const Size(double.infinity, 60),
-        elevation: 10,
-        shadowColor: Colors.red.shade300,
-      ),
-      child: const Text(
-        '模擬 SafeBuddy 警報觸發 (PIN_PULL)',
-        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-      ),
-    );
-  }
-
-  Widget _buildStatusMessage() {
-    final bool isError =
-        _statusMessage!.contains('❌') || _statusMessage!.contains('無法');
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 15),
-      decoration: BoxDecoration(
-        color: isError ? Colors.red.shade100 : Colors.green.shade100,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: isError ? Colors.red.shade300 : Colors.green.shade300,
         ),
       ),
-      child: Text(
-        _statusMessage!,
-        style: TextStyle(
-          color: isError ? Colors.red.shade700 : Colors.green.shade700,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAdditionalInfo() {
-    return Column(
-      children: [
-        const Divider(height: 30, thickness: 1, color: Colors.grey),
-        ListTile(
-          leading: const Icon(Icons.share, color: Colors.indigo),
-          title: const Text('與聯絡人分享當前位置'),
-          subtitle: Text('緯度: $mockLatitude, 經度: $mockLongitude'),
-          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-          onTap: () {
-            _setStatusMessage('🌍 模擬分享位置服務... (功能待實作)');
-          },
-        ),
-        ListTile(
-          leading: const Icon(Icons.account_circle, color: Colors.indigo),
-          title: const Text('使用者個人帳號'),
-          subtitle: const Text('點擊查看通知設定與緊急聯絡人'),
-          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-          onTap: () {
-            _setStatusMessage('👤 模擬進入帳號頁面... (功能待實作)');
-          },
-        ),
-      ],
     );
   }
 }
