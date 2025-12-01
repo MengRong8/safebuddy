@@ -1,0 +1,22 @@
+# analysis_options.yaml
+
+include: package:flutter/analysis_options.yaml
+
+analyzer:
+  errors:
+    unused_import: warning
+    dead_code: warning
+    missing_return: error
+    unnecessary_getters_setters: warning
+
+linter:
+  rules:
+    - prefer_single_quotes
+    - always_specify_types
+    - avoid_print
+    - public_member_api_docs
+    - lines_longer_than_80_chars
+    - prefer_final_fields
+    - unnecessary_new
+    - prefer_const_constructors
+    - avoid_annotating_with_dynamic
