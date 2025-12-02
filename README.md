@@ -26,23 +26,36 @@ The project is organized into the following directories:
 
 ## Setup Instructions
 
-1. **Clone the Repository**:
+**Clone the Repository**:
    ```
    git clone <repository-url>
    cd safebuddy
    ```
 
-2. **Install Dependencies**:
-   Ensure you have Flutter installed, then run:
-   ```
-   flutter pub get
-   ```
+**Navigate to backend directory**
+cd backend
 
-3. **Run the App**:
-   Use the following command to run the app on an emulator or connected device:
-   ```
-   flutter run
-   ```
+**Install Node.js dependencies**
+npm install
+
+**Start the backend server**
+node server.js
+
+- **You should see:**
+SafeBuddy Backend Server
+Server running on http://localhost:3000
+
+**Navigate to project root**
+cd C:\Users\mengr\safebuddy
+
+**Clean previous builds**
+flutter clean
+
+**Install Flutter dependencies**
+flutter pub get
+
+**Run the app on Windows**
+flutter run -d windows
 
 ## Usage
 
