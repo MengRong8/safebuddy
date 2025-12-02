@@ -71,36 +71,36 @@ function sendSmsNotification(toPhoneNumber, messageBody, eventData) {
  * @param {number} timeHour - 觸發事件的小時 (0-23)。
  * @returns {object} 包含風險分數 (0-100) 和提示訊息。
  */
-function aiRiskPrediction(latitude, longitude, timeHour) {
-    let riskScore = 10;
-    let message = "目前區域風險普通。";
+// function aiRiskPrediction(latitude, longitude, timeHour) {
+//     let riskScore = 10;
+//     let message = "目前區域風險普通。";
 
-    // 模擬：夜間 (22:00-06:00) 提高風險分數
-    const isNightTime = timeHour >= 22 || timeHour < 6;
-    if (isNightTime) {
-        riskScore += 40;
-        message = "⚠️ 此為夜間時段 (22:00-06:00)，區域人流較少，請特別注意安全！";
-    }
+//     // 模擬：夜間 (22:00-06:00) 提高風險分數
+//     const isNightTime = timeHour >= 22 || timeHour < 6;
+//     if (isNightTime) {
+//         riskScore += 40;
+//         message = "⚠️ 此為夜間時段 (22:00-06:00)，區域人流較少，請特別注意安全！";
+//     }
 
-    // 模擬：特定區域 (假設靠近模擬事故熱點 25.04, 121.5) 提高風險
-    const hotspotLat = 25.04;
-    const hotspotLon = 121.5;
-    const distance = Math.sqrt(Math.pow(latitude - hotspotLat, 2) + Math.pow(longitude - hotspotLon, 2));
+//     // 模擬：特定區域 (假設靠近模擬事故熱點 25.04, 121.5) 提高風險
+//     const hotspotLat = 25.04;
+//     const hotspotLon = 121.5;
+//     const distance = Math.sqrt(Math.pow(latitude - hotspotLat, 2) + Math.pow(longitude - hotspotLon, 2));
 
-    if (distance < 0.1) {
-        riskScore += 30;
-        message = "🚨 靠近歷史事故/犯罪高發區！請提高警覺。";
-    }
+//     if (distance < 0.1) {
+//         riskScore += 30;
+//         message = "🚨 靠近歷史事故/犯罪高發區！請提高警覺。";
+//     }
 
-    // 確保分數不超過 100
-    riskScore = Math.min(riskScore, 100);
+//     // 確保分數不超過 100
+//     riskScore = Math.min(riskScore, 100);
 
-    return {
-        riskScore: riskScore,
-        message: message,
-        isHighRisk: riskScore >= 70 // 定義高風險閾值
-    };
-}
+//     return {
+//         riskScore: riskScore,
+//         message: message,
+//         isHighRisk: riskScore >= 70 // 定義高風險閾值
+//     };
+// }
 
 
 // --- 3. API 路由定義 ---

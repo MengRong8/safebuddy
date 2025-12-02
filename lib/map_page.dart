@@ -36,22 +36,44 @@ class _MapPageState extends State<MapPage> {
     _loadHotZoneData();
   }
 
-  //  新增：檢查是否在危險區域內
+  // ✅ 修改：檢查是否在危險區域內（支援多個多邊形）
   bool _isInDangerZone() {
-    // 檢查犯罪熱點
-    if (_showCrimeZones &&
-        _isPointInPolygon(_currentPosition, _crimePolygons)) {
-      return true;
+    // 檢查犯罪熱點（每 4 個點組成一個多邊形）
+    if (_showCrimeZones && _crimePolygons.isNotEmpty) {
+      for (int i = 0; i < _crimePolygons.length; i += 4) {
+        if (i + 3 < _crimePolygons.length) {
+          List<LatLng> polygon = [
+            _crimePolygons[i],
+            _crimePolygons[i + 1],
+            _crimePolygons[i + 2],
+            _crimePolygons[i + 3],
+          ];
+          if (_isPointInPolygon(_currentPosition, polygon)) {
+            return true;
+          }
+        }
+      }
     }
 
-    // 檢查事故熱點
-    if (_showAccidentZones &&
-        _isPointInPolygon(_currentPosition, _accidentPolygons)) {
-      return true;
+    // 檢查事故熱點（每 4 個點組成一個多邊形）
+    if (_showAccidentZones && _accidentPolygons.isNotEmpty) {
+      for (int i = 0; i < _accidentPolygons.length; i += 4) {
+        if (i + 3 < _accidentPolygons.length) {
+          List<LatLng> polygon = [
+            _accidentPolygons[i],
+            _accidentPolygons[i + 1],
+            _accidentPolygons[i + 2],
+            _accidentPolygons[i + 3],
+          ];
+          if (_isPointInPolygon(_currentPosition, polygon)) {
+            return true;
+          }
+        }
+      }
     }
 
     // 檢查危險路口（50 公尺範圍內）
-    if (_showDangerIntersections) {
+    if (_showDangerIntersections && _dangerIntersections.isNotEmpty) {
       for (var intersection in _dangerIntersections) {
         double distance = _calculateDistance(_currentPosition, intersection);
         if (distance < 50) {
@@ -63,21 +85,48 @@ class _MapPageState extends State<MapPage> {
     return false;
   }
 
-  //  新增：取得危險區域訊息
+  // ✅ 修改：取得危險區域訊息（支援多個多邊形）
   String _getDangerZoneMessage() {
     List<String> dangers = [];
 
-    if (_showCrimeZones &&
-        _isPointInPolygon(_currentPosition, _crimePolygons)) {
-      dangers.add('犯罪熱點');
+    // 檢查犯罪熱點
+    if (_showCrimeZones && _crimePolygons.isNotEmpty) {
+      for (int i = 0; i < _crimePolygons.length; i += 4) {
+        if (i + 3 < _crimePolygons.length) {
+          List<LatLng> polygon = [
+            _crimePolygons[i],
+            _crimePolygons[i + 1],
+            _crimePolygons[i + 2],
+            _crimePolygons[i + 3],
+          ];
+          if (_isPointInPolygon(_currentPosition, polygon)) {
+            dangers.add('犯罪熱點');
+            break;
+          }
+        }
+      }
     }
 
-    if (_showAccidentZones &&
-        _isPointInPolygon(_currentPosition, _accidentPolygons)) {
-      dangers.add('事故多發區');
+    // 檢查事故熱點
+    if (_showAccidentZones && _accidentPolygons.isNotEmpty) {
+      for (int i = 0; i < _accidentPolygons.length; i += 4) {
+        if (i + 3 < _accidentPolygons.length) {
+          List<LatLng> polygon = [
+            _accidentPolygons[i],
+            _accidentPolygons[i + 1],
+            _accidentPolygons[i + 2],
+            _accidentPolygons[i + 3],
+          ];
+          if (_isPointInPolygon(_currentPosition, polygon)) {
+            dangers.add('事故多發區');
+            break;
+          }
+        }
+      }
     }
 
-    if (_showDangerIntersections) {
+    // 檢查危險路口
+    if (_showDangerIntersections && _dangerIntersections.isNotEmpty) {
       for (var intersection in _dangerIntersections) {
         double distance = _calculateDistance(_currentPosition, intersection);
         if (distance < 50) {
@@ -135,39 +184,60 @@ class _MapPageState extends State<MapPage> {
 
   Future<void> _loadHotZoneData() async {
     try {
-      // 載入犯罪熱點
+      // ✅ 載入犯罪熱點（多邊形區域）
       final crimeData =
           await rootBundle.loadString('assets/hotzones/crime_zones.json');
       final crimeJson = jsonDecode(crimeData) as List;
-      setState(() {
-        _crimePolygons = crimeJson
-            .map((coords) => LatLng(coords[0] as double, coords[1] as double))
-            .toList();
-      });
 
-      // 載入事故熱點
+      List<LatLng> allCrimePoints = [];
+      for (var zone in crimeJson) {
+        final coords = zone['coordinates'] as List;
+        for (var coord in coords) {
+          allCrimePoints.add(LatLng(coord[0] as double, coord[1] as double));
+        }
+      }
+
+      setState(() {
+        _crimePolygons = allCrimePoints;
+      });
+      print('✅ 犯罪熱點載入成功: ${allCrimePoints.length} 個點');
+
+      // ✅ 載入事故熱點（多邊形區域）
       final accidentData =
           await rootBundle.loadString('assets/hotzones/accident_zones.json');
       final accidentJson = jsonDecode(accidentData) as List;
-      setState(() {
-        _accidentPolygons = accidentJson
-            .map((coords) => LatLng(coords[0] as double, coords[1] as double))
-            .toList();
-      });
 
-      // 載入危險路口
+      List<LatLng> allAccidentPoints = [];
+      for (var zone in accidentJson) {
+        final coords = zone['coordinates'] as List;
+        for (var coord in coords) {
+          allAccidentPoints.add(LatLng(coord[0] as double, coord[1] as double));
+        }
+      }
+
+      setState(() {
+        _accidentPolygons = allAccidentPoints;
+      });
+      print('✅ 事故區域載入成功: ${allAccidentPoints.length} 個點');
+
+      // ✅ 載入危險路口（單點）
       final intersectionData = await rootBundle
           .loadString('assets/hotzones/danger_intersections.json');
       final intersectionJson = jsonDecode(intersectionData) as List;
-      setState(() {
-        _dangerIntersections = intersectionJson
-            .map((coords) => LatLng(coords[0] as double, coords[1] as double))
-            .toList();
-      });
 
-      print(' 熱點資料載入成功');
-    } catch (e) {
+      List<LatLng> intersectionPoints = [];
+      for (var intersection in intersectionJson) {
+        final coord = intersection['coordinate'] as List;
+        intersectionPoints.add(LatLng(coord[0] as double, coord[1] as double));
+      }
+
+      setState(() {
+        _dangerIntersections = intersectionPoints;
+      });
+      print('✅ 危險路口載入成功: ${intersectionPoints.length} 個點');
+    } catch (e, stackTrace) {
       print('❌ 熱點資料載入失敗: $e');
+      print('堆疊追蹤: $stackTrace');
     }
   }
 
@@ -182,17 +252,16 @@ class _MapPageState extends State<MapPage> {
 
   @override
   Widget build(BuildContext context) {
-    //  檢查當前位置是否在危險區域
     final isInDanger = _isInDangerZone();
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Map Page'),
+        title: const Text('SafeBuddy Map'),
         backgroundColor: Colors.teal,
         foregroundColor: Colors.white,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: _goBack, //  使用自訂返回方法
+          onPressed: _goBack,
         ),
       ),
       body: Stack(
@@ -200,10 +269,9 @@ class _MapPageState extends State<MapPage> {
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
-              initialCenter: _currentPosition, //  使用當前位置
+              initialCenter: _currentPosition,
               initialZoom: 15.0,
               onTap: (tapPosition, point) {
-                //  點擊地圖更新位置
                 setState(() {
                   _currentPosition = point;
                 });
@@ -216,36 +284,20 @@ class _MapPageState extends State<MapPage> {
                 userAgentPackageName: 'com.example.safebuddy',
               ),
 
-              // 犯罪熱點（紅色）
+              // ✅ 犯罪熱點（紅色多邊形）- 修改為多個多邊形
               if (_showCrimeZones && _crimePolygons.isNotEmpty)
                 PolygonLayer(
-                  polygons: [
-                    Polygon(
-                      points: _crimePolygons,
-                      color: Colors.red.withValues(alpha: 0.3),
-                      borderColor: Colors.red,
-                      borderStrokeWidth: 2.0,
-                      isFilled: true,
-                    ),
-                  ],
+                  polygons: _buildCrimePolygons(),
                 ),
 
-              // 事故熱點（橙色）
+              // ✅ 事故熱點（橙色多邊形）- 修改為多個多邊形
               if (_showAccidentZones && _accidentPolygons.isNotEmpty)
                 PolygonLayer(
-                  polygons: [
-                    Polygon(
-                      points: _accidentPolygons,
-                      color: Colors.orange.withValues(alpha: 0.3),
-                      borderColor: Colors.orange,
-                      borderStrokeWidth: 2.0,
-                      isFilled: true,
-                    ),
-                  ],
+                  polygons: _buildAccidentPolygons(),
                 ),
 
-              // 危險路口（黃色圓圈）
-              if (_showDangerIntersections)
+              // ✅ 危險路口（黃色圓圈）
+              if (_showDangerIntersections && _dangerIntersections.isNotEmpty)
                 CircleLayer(
                   circles: _dangerIntersections
                       .map((point) => CircleMarker(
@@ -258,7 +310,7 @@ class _MapPageState extends State<MapPage> {
                       .toList(),
                 ),
 
-              //  當前位置標記（會閃爍提示如果在危險區域）
+              // 當前位置標記
               MarkerLayer(
                 markers: [
                   Marker(
@@ -267,9 +319,7 @@ class _MapPageState extends State<MapPage> {
                     height: 40,
                     child: Container(
                       decoration: BoxDecoration(
-                        color: isInDanger //  危險區域顯示紅色
-                            ? Colors.red
-                            : Colors.blue,
+                        color: isInDanger ? Colors.red : Colors.blue,
                         shape: BoxShape.circle,
                         border: Border.all(
                           color: Colors.white,
@@ -284,7 +334,7 @@ class _MapPageState extends State<MapPage> {
                           ),
                         ],
                       ),
-                      child: Icon(
+                      child: const Icon(
                         Icons.person_pin_circle,
                         color: Colors.white,
                         size: 24,
@@ -296,7 +346,7 @@ class _MapPageState extends State<MapPage> {
             ],
           ),
 
-          //  新增：當前位置危險狀態提示
+          // 危險狀態提示
           if (isInDanger)
             Positioned(
               top: 16,
@@ -368,7 +418,7 @@ class _MapPageState extends State<MapPage> {
             ),
           ),
 
-          //  返回按鈕（顯示危險狀態）
+          // 返回按鈕
           Positioned(
             bottom: 16,
             left: 16,
@@ -423,5 +473,59 @@ class _MapPageState extends State<MapPage> {
         ),
       ),
     );
+  }
+
+  //  新增：建立犯罪熱點多邊形列表
+  List<Polygon> _buildCrimePolygons() {
+    // 假設每 4 個點組成一個多邊形
+    List<Polygon> polygons = [];
+
+    for (int i = 0; i < _crimePolygons.length; i += 4) {
+      if (i + 3 < _crimePolygons.length) {
+        polygons.add(
+          Polygon(
+            points: [
+              _crimePolygons[i],
+              _crimePolygons[i + 1],
+              _crimePolygons[i + 2],
+              _crimePolygons[i + 3],
+            ],
+            color: Colors.red.withValues(alpha: 0.3),
+            borderColor: Colors.red,
+            borderStrokeWidth: 2.0,
+            isFilled: true,
+          ),
+        );
+      }
+    }
+
+    return polygons;
+  }
+
+  //  新增：建立事故區域多邊形列表
+  List<Polygon> _buildAccidentPolygons() {
+    // 假設每 4 個點組成一個多邊形
+    List<Polygon> polygons = [];
+
+    for (int i = 0; i < _accidentPolygons.length; i += 4) {
+      if (i + 3 < _accidentPolygons.length) {
+        polygons.add(
+          Polygon(
+            points: [
+              _accidentPolygons[i],
+              _accidentPolygons[i + 1],
+              _accidentPolygons[i + 2],
+              _accidentPolygons[i + 3],
+            ],
+            color: Colors.orange.withValues(alpha: 0.3),
+            borderColor: Colors.orange,
+            borderStrokeWidth: 2.0,
+            isFilled: true,
+          ),
+        );
+      }
+    }
+
+    return polygons;
   }
 }

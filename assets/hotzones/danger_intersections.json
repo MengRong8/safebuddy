@@ -1,0 +1,58 @@
+[
+  {
+    "id": "intersection_1",
+    "name": "忠孝東路 × 復興南路",
+    "coordinate": [25.0418, 121.5440],
+    "riskLevel": "high",
+    "description": "大型十字路口，右轉車輛與直行車輛易衝突"
+  },
+  {
+    "id": "intersection_2",
+    "name": "南京東路 × 敦化北路",
+    "coordinate": [25.0520, 121.5485],
+    "riskLevel": "high",
+    "description": "車流複雜，行人穿越危險"
+  },
+  {
+    "id": "intersection_3",
+    "name": "信義路 × 基隆路",
+    "coordinate": [25.0332, 121.5665],
+    "riskLevel": "high",
+    "description": "匝道交會處，視線死角多"
+  },
+  {
+    "id": "intersection_4",
+    "name": "羅斯福路 × 和平東路",
+    "coordinate": [25.0155, 121.5285],
+    "riskLevel": "medium",
+    "description": "機車待轉區設計不良"
+  },
+  {
+    "id": "intersection_5",
+    "name": "中山北路 × 民權東路",
+    "coordinate": [25.0625, 121.5255],
+    "riskLevel": "medium",
+    "description": "五叉路口，方向複雜"
+  },
+  {
+    "id": "intersection_6",
+    "name": "承德路 × 民族西路",
+    "coordinate": [25.0690, 121.5160],
+    "riskLevel": "high",
+    "description": "大貨車出入頻繁，內輪差危險"
+  },
+  {
+    "id": "intersection_7",
+    "name": "光復南路 × 市民大道",
+    "coordinate": [25.0470, 121.5585],
+    "riskLevel": "medium",
+    "description": "高架橋下視線不佳"
+  },
+  {
+    "id": "intersection_8",
+    "name": "新生北路 × 南京東路",
+    "coordinate": [25.0525, 121.5265],
+    "riskLevel": "medium",
+    "description": "公車專用道交會處"
+  }
+]

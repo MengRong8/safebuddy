@@ -1220,7 +1220,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                             ),
                           ),
                           child: const Text(
-                            '倒數結束後將通知緊急聯絡人 💕',
+                            '倒數結束後將通知緊急聯絡人',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 11,
