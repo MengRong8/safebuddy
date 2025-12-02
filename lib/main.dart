@@ -125,7 +125,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
   int _charIndex = 0; // 當前字元索引
   bool _isTyping = false; // 是否正在打字
 
-  // ✅ 新增：記錄上次訊息切換時間
+  //  新增：記錄上次訊息切換時間
   DateTime? _lastMessageChangeTime;
 
   @override
@@ -290,7 +290,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     }
   }
 
-  // 新增：電量模擬器（每 10 秒降低 1%，測試用）
+// 新增：電量模擬器（每 10 秒降低 1%，降到 0% 後自動恢復到 100%）
   void _startBatterySimulator() {
     _batterySimulator = Timer.periodic(const Duration(seconds: 10), (timer) {
       setState(() {
@@ -307,6 +307,52 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
           if (_batteryLevel > 20) {
             _hasShownLowBatteryWarning = false;
           }
+        } else {
+          //  電量降到 0% 時，自動充電到 100%
+          print('🔋 電量耗盡，自動充電中...');
+          _chargeBattery();
+        }
+      });
+    });
+  }
+
+// 新增：充電動畫（模擬從 0% 充到 100%）
+  void _chargeBattery() {
+    // 暫停電量消耗
+    _batterySimulator?.cancel();
+
+    // 顯示充電訊息
+    setState(() {
+      _riskMessage = '🔌 電量耗盡，正在快速充電中...';
+    });
+    _startTypingEffect('🔌 電量耗盡，正在快速充電中...');
+
+    // 快速充電動畫（每 0.1 秒增加 10%）
+    Timer.periodic(const Duration(milliseconds: 100), (chargeTimer) {
+      setState(() {
+        if (_batteryLevel < 100) {
+          _batteryLevel += 10;
+          if (_batteryLevel > 100) _batteryLevel = 100;
+        } else {
+          // 充電完成
+          chargeTimer.cancel();
+          print(' 充電完成！電量恢復到 100%');
+
+          // 顯示充電完成訊息
+          _riskMessage = ' 充電完成！電量已恢復到 100%';
+          _startTypingEffect(' 充電完成！電量已恢復到 100%');
+          _hasShownLowBatteryWarning = false;
+
+          // 3 秒後清除訊息並重新開始消耗
+          Future.delayed(const Duration(seconds: 3), () {
+            setState(() {
+              _riskMessage = '';
+            });
+            _startTypingEffect('您好！我是你的專屬 SafeBuddy 小精靈。');
+
+            // 重新啟動電量消耗
+            _startBatterySimulator();
+          });
         }
       });
     });
@@ -483,53 +529,78 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     );
   }
 
-  // 右上角電量顯示
+// 右上角電量顯示（加入點擊充電功能）
   Widget _buildBatteryIndicator() {
     final bool isConnected = _bleStatus == '已連線';
     final bool isLowBattery = _batteryLevel <= 20;
 
     return Positioned(
-      top: 140, //  調整避開使用者卡片（原本 80）
+      top: 140,
       right: 10,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color:
-              const Color.fromARGB(255, 153, 168, 153).withValues(alpha: 0.6),
-          borderRadius: BorderRadius.circular(20),
-          border: isLowBattery ? Border.all(color: Colors.red, width: 2) : null,
-          boxShadow: [
-            BoxShadow(
-              color: isLowBattery
-                  ? Colors.red.withValues(alpha: 0.3)
-                  : Colors.black.withValues(alpha: 0.1),
-              blurRadius: 8,
-              spreadRadius: 1,
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              isConnected
-                  ? Icons.bluetooth_connected
-                  : Icons.bluetooth_disabled,
-              color: isConnected ? Colors.green : Colors.red,
-              size: 18,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              isConnected ? '🔋 $_batteryLevel%' : '未連線',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
+      child: GestureDetector(
+        //  新增：點擊手動充電
+        onTap: () {
+          if (_batteryLevel < 100) {
+            print('🔌 手動觸發充電');
+            _chargeBattery();
+          } else {
+            print('🔋 電量已滿，無需充電');
+          }
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color:
+                const Color.fromARGB(255, 153, 168, 153).withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(20),
+            border:
+                isLowBattery ? Border.all(color: Colors.red, width: 2) : null,
+            boxShadow: [
+              BoxShadow(
                 color: isLowBattery
-                    ? Colors.red
-                    : (isConnected ? Colors.black : Colors.red),
+                    ? Colors.red.withValues(alpha: 0.3)
+                    : Colors.black.withValues(alpha: 0.1),
+                blurRadius: 8,
+                spreadRadius: 1,
               ),
-            ),
-          ],
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isConnected
+                    ? Icons.bluetooth_connected
+                    : Icons.bluetooth_disabled,
+                color: isConnected ? Colors.green : Colors.red,
+                size: 18,
+              ),
+              const SizedBox(width: 6),
+              //  新增：充電中顯示閃電圖示
+              if (_batteryLevel == 0 ||
+                  _batterySimulator?.isActive == false && _batteryLevel < 100)
+                Row(
+                  children: [
+                    Icon(
+                      Icons.bolt,
+                      color: Colors.yellow.shade700,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                ),
+              Text(
+                isConnected ? '🔋 $_batteryLevel%' : '未連線',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: isLowBattery
+                      ? Colors.red
+                      : (isConnected ? Colors.black : Colors.red),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -564,12 +635,17 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                   _dangerZoneMessage = result['message'] as String? ?? '';
 
                   if (_isInDangerZone) {
+                    //  危險區域：顯示橫幅
                     _riskMessage = _dangerZoneMessage;
                     _showTopNotificationBanner();
-                    _startTypingEffect(_dangerZoneMessage);
+                    // 對話框保持顯示電量或打招呼（不改變）
                   } else {
-                    _riskMessage = '';
-                    _startTypingEffect('目前位置安全，請放心！');
+                    //  安全區域：清除危險訊息，顯示安全橫幅
+                    _riskMessage = ' 目前位置安全，請放心！'; // 設定安全訊息
+                    _dangerZoneMessage = ''; // 清空危險訊息
+                    _isInDangerZone = false;
+                    _showTopNotificationBanner(); // 顯示安全橫幅
+                    // 對話框保持顯示電量或打招呼（不改變）
                   }
                 });
               }
@@ -724,59 +800,65 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     );
   }
 
-  //  對話框
+//  對話框（只顯示電量和打招呼訊息）
   Widget _buildSafeBuddyDialog() {
-    // 決定要顯示的訊息類型
+    //  決定要顯示的訊息類型（不包含危險提示）
     String targetMessage;
+    Color borderColor;
+    Color shadowColor;
+    Color textColor;
+
     if (_batteryLevel <= 20) {
+      // 優先級1：低電量警告
       targetMessage = '記得充電喔！電量剩餘 $_batteryLevel%';
-    } else if (_riskMessage.isNotEmpty) {
-      targetMessage = _riskMessage;
+      borderColor = const Color.fromARGB(255, 115, 229, 159);
+      shadowColor =
+          const Color.fromARGB(255, 59, 108, 75).withValues(alpha: 0.25);
+      textColor = const Color.fromARGB(255, 38, 119, 88);
     } else {
+      // 優先級2：預設打招呼訊息
       targetMessage = '您好！我是你的專屬 SafeBuddy 小精靈。';
+      borderColor = Colors.teal.shade300;
+      shadowColor = Colors.teal.withValues(alpha: 0.2);
+      textColor = Colors.grey.shade800;
     }
 
-    // ✅ 當訊息變更時，檢查是否需要延遲
+    //  當訊息變更時，強制等待 3 秒
     if (_fullMessage != targetMessage && !_isTyping) {
       final now = DateTime.now();
 
-      // ✅ 檢查距離上次切換是否超過 3 秒
       if (_lastMessageChangeTime != null) {
         final timeSinceLastChange =
             now.difference(_lastMessageChangeTime!).inSeconds;
 
-        if (timeSinceLastChange < 3) {
-          // ✅ 如果間隔不足 3 秒，延遲執行
-          final remainingTime = 3 - timeSinceLastChange;
-          print('⏳ 訊息切換延遲 $remainingTime 秒'); // 除錯訊息
+        //  不論何時都等待剩餘時間
+        final remainingTime = (timeSinceLastChange < 5)
+            ? (5 - timeSinceLastChange)
+            : 5; // 如果超過 5 秒，重新等待 5 秒
 
-          Future.delayed(Duration(seconds: remainingTime), () {
-            if (mounted && _fullMessage != targetMessage && !_isTyping) {
-              print('✅ 延遲後切換訊息: $targetMessage'); // 除錯訊息
-              setState(() {
-                _lastMessageChangeTime = DateTime.now();
-              });
-              _startTypingEffect(targetMessage);
-            }
-          });
-        } else {
-          // ✅ 如果間隔超過 3 秒，立即執行
-          print('✅ 立即切換訊息: $targetMessage'); // 除錯訊息
-          WidgetsBinding.instance.addPostFrameCallback((_) {
+        print('⏳ 訊息切換延遲 $remainingTime 秒（強制 5 秒冷卻）');
+
+        Future.delayed(Duration(seconds: remainingTime), () {
+          if (mounted && _fullMessage != targetMessage && !_isTyping) {
+            print(' 延遲後切換訊息: $targetMessage');
             setState(() {
               _lastMessageChangeTime = DateTime.now();
             });
             _startTypingEffect(targetMessage);
-          });
-        }
+          }
+        });
       } else {
-        // ✅ 第一次顯示訊息，立即執行
-        print('✅ 首次顯示訊息: $targetMessage'); // 除錯訊息
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          setState(() {
-            _lastMessageChangeTime = DateTime.now();
-          });
-          _startTypingEffect(targetMessage);
+        //  首次顯示也等待 3 秒（可選：如果希望首次立即顯示，改為 0）
+        print(' 首次顯示訊息（等待 3 秒）: $targetMessage');
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted && _fullMessage != targetMessage && !_isTyping) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              setState(() {
+                _lastMessageChangeTime = DateTime.now();
+              });
+              _startTypingEffect(targetMessage);
+            });
+          }
         });
       }
     }
@@ -792,21 +874,12 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
           color: Colors.white.withValues(alpha: 0.8),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: _batteryLevel <= 20
-                ? const Color.fromARGB(255, 115, 229, 159)
-                : (_isInDangerZone
-                    ? Colors.red.shade300
-                    : Colors.teal.shade300),
+            color: borderColor,
             width: 2.5,
           ),
           boxShadow: [
             BoxShadow(
-              color: _batteryLevel <= 20
-                  ? const Color.fromARGB(255, 59, 108, 75)
-                      .withValues(alpha: 0.25)
-                  : (_isInDangerZone
-                      ? Colors.red.withValues(alpha: 0.25)
-                      : Colors.teal.withValues(alpha: 0.2)),
+              color: shadowColor,
               blurRadius: 15,
               offset: const Offset(0, 5),
             ),
@@ -823,17 +896,11 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 12,
-                      color: _batteryLevel <= 20
-                          ? const Color.fromARGB(255, 38, 119, 88)
-                          : (_isInDangerZone
-                              ? Colors.red.shade900
-                              : Colors.grey.shade800),
+                      color: textColor,
                       height: 1.4,
                       fontWeight: _batteryLevel <= 20
                           ? FontWeight.bold
-                          : (_isInDangerZone
-                              ? FontWeight.bold
-                              : FontWeight.w500),
+                          : FontWeight.w500,
                     ),
                   ),
                 ),
@@ -850,8 +917,57 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     );
   }
 
-  // 上方危險通知橫幅
+// 上方危險通知橫幅（包含安全提示）
   Widget _buildTopNotification() {
+    //  處理所有與位置相關的訊息
+    String notificationMessage;
+    Color backgroundColor;
+    Color borderColor;
+    Color iconColor;
+    Color textColor;
+    IconData iconData;
+
+    if (_isInDangerZone) {
+      // 危險區域警告（優先級最高）
+      notificationMessage = _dangerZoneMessage.isNotEmpty
+          ? _dangerZoneMessage
+          : '⚠️ 您位於危險區域，請提高警覺！';
+      backgroundColor = Colors.red.shade50;
+      borderColor = Colors.red.shade400;
+      iconColor = Colors.red.shade700;
+      textColor = Colors.red.shade900;
+      iconData = Icons.warning_amber_rounded;
+    } else if (_riskMessage.isNotEmpty &&
+        !_riskMessage.contains('電量') &&
+        !_riskMessage.contains('充電')) {
+      // 一般訊息（包含安全提示，但排除電量訊息）
+      if (_riskMessage.contains('安全')) {
+        //  安全訊息（綠色）
+        notificationMessage = _riskMessage;
+        backgroundColor = Colors.green.shade50;
+        borderColor = Colors.green.shade300;
+        iconColor = Colors.green.shade600;
+        textColor = Colors.green.shade800;
+        iconData = Icons.check_circle_outline;
+      } else {
+        // 其他風險提示（橙色）
+        notificationMessage = _riskMessage;
+        backgroundColor = Colors.orange.shade50;
+        borderColor = Colors.orange.shade300;
+        iconColor = Colors.orange.shade600;
+        textColor = Colors.orange.shade800;
+        iconData = Icons.info_outline;
+      }
+    } else {
+      // 預設訊息（不應該顯示，但作為安全後備）
+      notificationMessage = ' 目前位置安全';
+      backgroundColor = Colors.green.shade50;
+      borderColor = Colors.green.shade300;
+      iconColor = Colors.green.shade600;
+      textColor = Colors.green.shade800;
+      iconData = Icons.check_circle_outline;
+    }
+
     return SlideTransition(
       position: _slideAnimation!,
       child: Positioned(
@@ -859,34 +975,72 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
         left: 16,
         right: 16,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
-            color: Colors.red.shade50,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.red.shade400, width: 2),
+            color: backgroundColor,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: borderColor, width: 2),
             boxShadow: [
               BoxShadow(
-                color: Colors.red.shade200,
-                blurRadius: 8,
-                spreadRadius: 1,
+                color: borderColor.withValues(alpha: 0.3),
+                blurRadius: 10,
+                spreadRadius: 2,
               ),
             ],
           ),
           child: Row(
             children: [
-              Icon(
-                Icons.warning_amber_rounded,
-                color: Colors.red.shade700,
-                size: 20,
+              // 動態圖示
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: iconColor.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  iconData,
+                  color: iconColor,
+                  size: 22,
+                ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
+
+              // 動態訊息
               Expanded(
                 child: Text(
-                  '該地區 22:00 過後人流較少，請注意安全或提伴前行',
+                  notificationMessage,
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: Colors.red.shade900,
+                    color: textColor,
+                    height: 1.3,
+                  ),
+                ),
+              ),
+
+              // 關閉按鈕
+              GestureDetector(
+                onTap: () {
+                  _slideController?.reverse().then((_) {
+                    setState(() {
+                      _showTopNotification = false;
+                      //  關閉橫幅後清除 _riskMessage（避免重複顯示）
+                      if (!_isInDangerZone) {
+                        _riskMessage = '';
+                      }
+                    });
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: textColor.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.close,
+                    size: 16,
+                    color: textColor,
                   ),
                 ),
               ),
@@ -897,7 +1051,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     );
   }
 
-  // 中間對話框（綠色半透明 + 泡泡彈出動畫）
+  // 中間對話框
   Widget _buildCenterDialog() {
     return AnimatedBuilder(
       animation: _dialogController!,
@@ -907,194 +1061,299 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
           child: Center(
             child: Transform.scale(
               scale: _scaleAnimation!.value,
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 30),
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Colors.teal.shade300.withValues(alpha: 0.85),
-                      Colors.teal.shade400.withValues(alpha: 0.9),
-                      Colors.green.shade400.withValues(alpha: 0.85),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(30),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.5),
-                    width: 3,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.teal.shade700.withValues(alpha: 0.4),
-                      blurRadius: 30,
-                      spreadRadius: 5,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  // 主要對話框
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 40),
+                    padding: const EdgeInsets.all(20),
+                    width: 280,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          const Color(0xFFFFF9E6), // 淡黃色
+                          const Color(0xFFFFFBF0), // 象牙白
+                          const Color(0xFFFFFAE6), // 淡奶油黃
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(25),
+                      border: Border.all(
+                        color: const Color(0xFFFFD54F)
+                            .withValues(alpha: 0.6), // 金黃色邊框
+                        width: 2.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFFFFC107)
+                              .withValues(alpha: 0.3), // 琥珀色陰影
+                          blurRadius: 20,
+                          spreadRadius: 3,
+                        ),
+                        BoxShadow(
+                          color: Colors.white.withValues(alpha: 0.5),
+                          blurRadius: 10,
+                          spreadRadius: -3,
+                          offset: const Offset(-3, -3),
+                        ),
+                      ],
                     ),
-                    BoxShadow(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      blurRadius: 15,
-                      spreadRadius: -5,
-                      offset: const Offset(-5, -5),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // 可愛警告圖示
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                const Color(0xFFFFD54F), // 金黃色
+                                const Color(0xFFFFC107), // 琥珀色
+                              ],
+                            ),
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFFFFC107)
+                                    .withValues(alpha: 0.4),
+                                blurRadius: 15,
+                                spreadRadius: 3,
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.favorite_border, // 愛心圖示
+                            size: 36,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // 標題
+                        Text(
+                          '緊急警報倒數',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: const Color(0xFFF57C00), // 深橙黃色
+                            shadows: [
+                              Shadow(
+                                color: Colors.white.withValues(alpha: 0.8),
+                                blurRadius: 3,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // 倒數數字（可愛圓形背景）
+                        Container(
+                          width: 100,
+                          height: 100,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Color(0xFFFFE082), // 淡金黃
+                                Color(0xFFFFD54F), // 金黃色
+                              ],
+                            ),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white,
+                              width: 3,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFFFFC107)
+                                    .withValues(alpha: 0.5),
+                                blurRadius: 15,
+                              ),
+                            ],
+                          ),
+                          child: Center(
+                            child: Text(
+                              '$_countdown',
+                              style: const TextStyle(
+                                fontSize: 48,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                                shadows: [
+                                  Shadow(
+                                    color: Color(0xFFF57C00),
+                                    blurRadius: 8,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        // 秒字
+                        Text(
+                          '秒',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFFFFC107),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // 說明文字
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.7),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: const Color(0xFFFFD54F)
+                                  .withValues(alpha: 0.5),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: const Text(
+                            '倒數結束後將通知緊急聯絡人 💕',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFFF57C00),
+                              fontWeight: FontWeight.w600,
+                              height: 1.3,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+
+                        // 我沒事按鈕（可愛黃色）
+                        Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(15),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFFFFC107)
+                                    .withValues(alpha: 0.3),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: ElevatedButton(
+                            onPressed: _isLoading ? null : _cancelAlert,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: const Color(0xFFF57C00),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(15),
+                                side: BorderSide(
+                                  color: const Color(0xFFFFD54F),
+                                  width: 2,
+                                ),
+                              ),
+                              elevation: 0,
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.check_circle,
+                                  size: 22,
+                                  color: const Color(0xFFFFC107),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  _isLoading ? '處理中...' : 'I\'m Safe',
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w900,
+                                    color: Color(0xFFF57C00),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // 動態脈動圓圈圖示
-                    Container(
-                      padding: const EdgeInsets.all(20),
+                  ),
+
+                  // ✨ 右下角小精靈圖片
+                  Positioned(
+                    right: 20,
+                    bottom: -15,
+                    child: Container(
+                      width: 80,
+                      height: 80,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.3),
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.white.withValues(alpha: 0.5),
-                            blurRadius: 20,
-                            spreadRadius: 5,
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.warning_amber_rounded,
-                        size: 60,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // 標題
-                    Text(
-                      '緊急警報倒數',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
-                        shadows: [
-                          Shadow(
-                            color: Colors.black.withValues(alpha: 0.3),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // 倒數數字（帶光暈效果）
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 40,
-                        vertical: 20,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.25),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.4),
-                          width: 2,
-                        ),
-                      ),
-                      child: Text(
-                        '$_countdown',
-                        style: TextStyle(
-                          fontSize: 72,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                          shadows: [
-                            Shadow(
-                              color: Colors.teal.shade700,
-                              blurRadius: 15,
-                            ),
-                            const Shadow(
-                              color: Colors.white,
-                              blurRadius: 30,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // 秒字
-                    Text(
-                      '秒',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white.withValues(alpha: 0.9),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // 說明文字
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Text(
-                        '倒數結束後將通知緊急聯絡人',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Colors.white,
-                          fontWeight: FontWeight.w500,
-                          height: 1.4,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 28),
-
-                    // 我沒事按鈕（白色）
-                    Container(
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(15),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.2),
+                            color:
+                                const Color(0xFFFFC107).withValues(alpha: 0.3),
                             blurRadius: 10,
-                            offset: const Offset(0, 5),
+                            spreadRadius: 2,
                           ),
                         ],
                       ),
-                      child: ElevatedButton(
-                        onPressed: _isLoading ? null : _cancelAlert,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: Colors.teal.shade700,
-                          padding: const EdgeInsets.symmetric(vertical: 18),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(15),
-                          ),
-                          elevation: 0,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.check_circle_outline,
-                              size: 28,
-                              color: Colors.teal.shade700,
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              _isLoading ? '處理中...' : 'I\'m Safe',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w900,
-                                color: Colors.teal.shade700,
+                      child: Image.asset(
+                        'assets/image/fairy_speaking.png',
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) {
+                          // 如果圖片載入失敗，顯示可愛的替代圖示
+                          return Container(
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [
+                                  Color(0xFFFFE082),
+                                  Color(0xFFFFD54F),
+                                ],
                               ),
+                              shape: BoxShape.circle,
                             ),
-                          ],
-                        ),
+                            child: const Icon(
+                              Icons.record_voice_over,
+                              size: 40,
+                              color: Colors.white,
+                            ),
+                          );
+                        },
                       ),
                     ),
-                  ],
-                ),
+                  ),
+
+                  // ✨ 裝飾小星星（左上角）
+                  Positioned(
+                    left: 25,
+                    top: -8,
+                    child: Icon(
+                      Icons.star,
+                      size: 20,
+                      color:
+                          const Color(0xFFFFD700).withValues(alpha: 0.8), // 金色
+                    ),
+                  ),
+
+                  // ✨ 裝飾小星星（右上角）
+                  Positioned(
+                    right: 25,
+                    top: -5,
+                    child: Icon(
+                      Icons.star,
+                      size: 16,
+                      color:
+                          const Color(0xFFFFC107).withValues(alpha: 0.8), // 琥珀色
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

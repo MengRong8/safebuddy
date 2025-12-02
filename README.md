@@ -32,15 +32,12 @@ The project is organized into the following directories:
    cd safebuddy
    ```
 
-**Navigate to backend directory**
-cd backend
 
 **Install Node.js dependencies**
 npm install
 
 **Start the backend server**
-node server.js
-
+npm start
 - **You should see:**
 SafeBuddy Backend Server
 Server running on http://localhost:3000
