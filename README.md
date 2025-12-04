@@ -36,6 +36,8 @@ The project is organized into the following directories:
 **Install Node.js dependencies**
 npm install
 
+npm install twilio
+
 **Start the backend server**
 npm start
 - **You should see:**

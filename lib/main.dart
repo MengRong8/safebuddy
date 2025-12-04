@@ -56,7 +56,7 @@ class SafeBuddyApp extends StatelessWidget {
 // --- 常量 ---
 const String backendUrl = 'http://localhost:3000/api';
 const String mockUserId = 'SAFEBUDDY_USER_123';
-const String mockContactNumber = '0987654321';
+const String mockContactNumber = '886963510105';
 const double mockLatitude = 25.0478;
 const double mockLongitude = 121.5175;
 
@@ -274,18 +274,79 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     });
 
     try {
-      await http
+      // ✅ 呼叫後端取消警報 API（會自動發送平安簡讯）
+      final response = await http
           .post(
             Uri.parse('$backendUrl/cancel'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({'alertId': _currentAlertId ?? 'mock-id'}),
           )
-          .timeout(const Duration(seconds: 5));
+          .timeout(const Duration(seconds: 10));
 
-      setState(() => _currentAlertId = null);
+      if (response.statusCode == 200) {
+        final result = jsonDecode(utf8.decode(response.bodyBytes));
+
+        setState(() => _currentAlertId = null);
+
+        // ✅ 顯示簡訊發送結果
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  Icon(
+                    result['smsDelivered'] == true
+                        ? Icons.check_circle
+                        : Icons.error,
+                    color: Colors.white,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      result['smsDelivered'] == true
+                          ? '✅ 已通知緊急聯絡人：您已平安'
+                          : '⚠️ 警報已取消，但簡訊發送失敗',
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor:
+                  result['smsDelivered'] == true ? Colors.green : Colors.orange,
+              duration: const Duration(seconds: 4),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+
+        print('取消警報成功: ${result['message']}');
+        print('簡訊發送狀態: ${result['smsDelivered']}');
+      } else {
+        throw Exception('API 回應錯誤: ${response.statusCode}');
+      }
     } catch (e) {
       print('API Error: $e');
+
+      // ✅ 顯示錯誤訊息
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.warning, color: Colors.white),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text('❌ 取消警報失敗: $e'),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     } finally {
+      // ✅ 確保在 finally 區塊中恢復狀態
       setState(() => _isLoading = false);
     }
   }
@@ -455,6 +516,58 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
         _bleStatus = (_bleStatus == '已連線') ? '未連線' : '已連線';
       });
     });
+  }
+
+  // --- 測試簡訊發送 ---
+  Future<void> _testSms() async {
+    setState(() => _isLoading = true);
+
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$backendUrl/test-sms'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'phoneNumber': mockContactNumber, // 使用現有的緊急聯絡人號碼
+              'message': '🧪 SafeBuddy 測試訊息：系統運作正常！',
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final result = jsonDecode(utf8.decode(response.bodyBytes));
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['success']
+                  ? '✅ 測試簡訊已發送！訊息 ID: ${result['messageSid']}'
+                  : '❌ 簡訊發送失敗: ${result['error']}'),
+              backgroundColor: result['success'] ? Colors.green : Colors.red,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+
+        print('測試簡訊結果: ${result['message']}');
+      } else {
+        throw Exception('API 回應錯誤: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('測試簡訊失敗: $e');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ 測試簡訊失敗: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
   // --- UI 建構 ---

@@ -36,7 +36,7 @@ class _MapPageState extends State<MapPage> {
     _loadHotZoneData();
   }
 
-  // ✅ 修改：檢查是否在危險區域內（支援多個多邊形）
+  // 修改：檢查是否在危險區域內（支援多個多邊形）
   bool _isInDangerZone() {
     // 檢查犯罪熱點（每 4 個點組成一個多邊形）
     if (_showCrimeZones && _crimePolygons.isNotEmpty) {
@@ -85,7 +85,7 @@ class _MapPageState extends State<MapPage> {
     return false;
   }
 
-  // ✅ 修改：取得危險區域訊息（支援多個多邊形）
+  // 修改：取得危險區域訊息（支援多個多邊形）
   String _getDangerZoneMessage() {
     List<String> dangers = [];
 
@@ -143,7 +143,7 @@ class _MapPageState extends State<MapPage> {
     final now = DateTime.now();
     final isNightTime = now.hour >= 22 || now.hour < 6;
 
-    String message = '⚠️ 您位於${dangers.join('、')}';
+    String message = '您位於${dangers.join('、')}';
     if (isNightTime) {
       message += '，且現在是夜間時段，請特別注意安全或結伴同行！';
     } else {
@@ -184,7 +184,7 @@ class _MapPageState extends State<MapPage> {
 
   Future<void> _loadHotZoneData() async {
     try {
-      // ✅ 載入犯罪熱點（多邊形區域）
+      // 載入犯罪熱點（多邊形區域）
       final crimeData =
           await rootBundle.loadString('assets/hotzones/crime_zones.json');
       final crimeJson = jsonDecode(crimeData) as List;
@@ -200,9 +200,9 @@ class _MapPageState extends State<MapPage> {
       setState(() {
         _crimePolygons = allCrimePoints;
       });
-      print('✅ 犯罪熱點載入成功: ${allCrimePoints.length} 個點');
+      print('犯罪熱點載入成功: ${allCrimePoints.length} 個點');
 
-      // ✅ 載入事故熱點（多邊形區域）
+      // 載入事故熱點（多邊形區域）
       final accidentData =
           await rootBundle.loadString('assets/hotzones/accident_zones.json');
       final accidentJson = jsonDecode(accidentData) as List;
@@ -218,9 +218,9 @@ class _MapPageState extends State<MapPage> {
       setState(() {
         _accidentPolygons = allAccidentPoints;
       });
-      print('✅ 事故區域載入成功: ${allAccidentPoints.length} 個點');
+      print('事故區域載入成功: ${allAccidentPoints.length} 個點');
 
-      // ✅ 載入危險路口（單點）
+      // 載入危險路口（單點）
       final intersectionData = await rootBundle
           .loadString('assets/hotzones/danger_intersections.json');
       final intersectionJson = jsonDecode(intersectionData) as List;
@@ -234,7 +234,7 @@ class _MapPageState extends State<MapPage> {
       setState(() {
         _dangerIntersections = intersectionPoints;
       });
-      print('✅ 危險路口載入成功: ${intersectionPoints.length} 個點');
+      print('危險路口載入成功: ${intersectionPoints.length} 個點');
     } catch (e, stackTrace) {
       print('❌ 熱點資料載入失敗: $e');
       print('堆疊追蹤: $stackTrace');
@@ -284,19 +284,19 @@ class _MapPageState extends State<MapPage> {
                 userAgentPackageName: 'com.example.safebuddy',
               ),
 
-              // ✅ 犯罪熱點（紅色多邊形）- 修改為多個多邊形
+              // 犯罪熱點（紅色多邊形）- 修改為多個多邊形
               if (_showCrimeZones && _crimePolygons.isNotEmpty)
                 PolygonLayer(
                   polygons: _buildCrimePolygons(),
                 ),
 
-              // ✅ 事故熱點（橙色多邊形）- 修改為多個多邊形
+              // 事故熱點（橙色多邊形）- 修改為多個多邊形
               if (_showAccidentZones && _accidentPolygons.isNotEmpty)
                 PolygonLayer(
                   polygons: _buildAccidentPolygons(),
                 ),
 
-              // ✅ 危險路口（黃色圓圈）
+              // 危險路口（黃色圓圈）
               if (_showDangerIntersections && _dangerIntersections.isNotEmpty)
                 CircleLayer(
                   circles: _dangerIntersections
