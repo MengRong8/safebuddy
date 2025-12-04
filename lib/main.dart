@@ -8,7 +8,7 @@ import 'dart:convert';
 import 'dart:io' show Platform;
 import 'package:window_manager/window_manager.dart';
 import 'package:latlong2/latlong.dart';
-import 'map_page.dart'; // 加在檔案最上方
+import 'map_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -81,6 +81,30 @@ class RiskInfo {
   }
 }
 
+// 新增：後端狀態模型
+class BackendStatus {
+  final bool isRunning;
+  final bool twilioConfigured;
+  final bool recipientConfigured;
+  final int alertsCount;
+
+  BackendStatus({
+    required this.isRunning,
+    required this.twilioConfigured,
+    required this.recipientConfigured,
+    required this.alertsCount,
+  });
+
+  factory BackendStatus.fromJson(Map<String, dynamic> json) {
+    return BackendStatus(
+      isRunning: json['status'] == 'running',
+      twilioConfigured: json['twilioConfigured'] ?? false,
+      recipientConfigured: json['recipientConfigured'] ?? false,
+      alertsCount: json['alerts'] ?? 0,
+    );
+  }
+}
+
 // --- 主畫面 ---
 class SafeBuddyHomePage extends StatefulWidget {
   const SafeBuddyHomePage({super.key});
@@ -102,45 +126,50 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
   int _batteryLevel = 85;
   bool _hasShownLowBatteryWarning = false;
 
-  //  新增這三行
   LatLng _currentPosition = const LatLng(mockLatitude, mockLongitude);
   bool _isInDangerZone = false;
   String _dangerZoneMessage = '';
 
+  // 新增：後端連線狀態
+  bool _isBackendConnected = false;
+  BackendStatus? _backendStatus;
+
   Timer? _timer;
   Timer? _bleSimulator;
-  Timer? _batterySimulator; // 新增：電量模擬器
+  Timer? _batterySimulator;
+  Timer? _backendHealthCheck; // 新增：後端健康檢查計時器
   AnimationController? _slideController;
   Animation<Offset>? _slideAnimation;
 
-  // 對話框動畫控制器
   AnimationController? _dialogController;
   Animation<double>? _scaleAnimation;
   Animation<double>? _opacityAnimation;
 
-  //  新增：打字機效果相關變數
-  String _displayedMessage = ''; // 當前顯示的文字
-  String _fullMessage = ''; // 完整訊息
-  Timer? _typingTimer; // 打字計時器
-  int _charIndex = 0; // 當前字元索引
-  bool _isTyping = false; // 是否正在打字
+  String _displayedMessage = '';
+  String _fullMessage = '';
+  Timer? _typingTimer;
+  int _charIndex = 0;
+  bool _isTyping = false;
 
-  //  新增：記錄上次訊息切換時間
   DateTime? _lastMessageChangeTime;
 
   @override
   void initState() {
     super.initState();
 
-    // 只在夜間（22:00-06:00）才自動檢查
+    // 新增：啟動時檢查後端連線
+    _checkBackendConnection();
+
+    // 新增：每 30 秒檢查一次後端狀態
+    _startBackendHealthCheck();
+
     final now = DateTime.now();
     if (now.hour >= 22 || now.hour < 6) {
       _checkRiskArea();
     }
     _startBleSimulator();
-    _startBatterySimulator(); // 新增：啟動電量模擬器
+    _startBatterySimulator();
 
-    // 上方通知滑動動畫
     _slideController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 400),
@@ -153,7 +182,6 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
       curve: Curves.easeOut,
     ));
 
-    // 對話框泡泡彈出動畫
     _dialogController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
@@ -175,7 +203,6 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
       curve: Curves.easeIn,
     ));
 
-    //  初始化預設訊息
     _startTypingEffect('您好！我是 SafeBuddy 小精靈。點擊左側按鈕檢查周邊風險。');
   }
 
@@ -184,15 +211,265 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     _timer?.cancel();
     _bleSimulator?.cancel();
     _batterySimulator?.cancel();
+    _backendHealthCheck?.cancel(); // 釋放後端檢查計時器
     _slideController?.dispose();
     _dialogController?.dispose();
-    _typingTimer?.cancel(); //  釋放打字計時器
+    _typingTimer?.cancel();
 
     super.dispose();
   }
 
+  // 新增：檢查後端連線狀態
+  Future<void> _checkBackendConnection() async {
+    try {
+      final response = await http
+          .get(Uri.parse('http://localhost:3000/'))
+          .timeout(const Duration(seconds: 3));
+
+      if (response.statusCode == 200) {
+        final result = jsonDecode(utf8.decode(response.bodyBytes));
+        final status = BackendStatus.fromJson(result);
+
+        setState(() {
+          _isBackendConnected = true;
+          _backendStatus = status;
+        });
+
+        print('後端連線成功');
+        print('   Twilio 已設定: ${status.twilioConfigured}');
+        print('   家人號碼已設定: ${status.recipientConfigured}');
+        print('   警報數量: ${status.alertsCount}');
+
+        // 顯示連線成功訊息
+        _startTypingEffect('🎉 後端連線成功！系統已就緒。');
+      } else {
+        throw Exception('後端回應錯誤: ${response.statusCode}');
+      }
+    } catch (e) {
+      setState(() {
+        _isBackendConnected = false;
+        _backendStatus = null;
+      });
+
+      print('❌ 後端連線失敗: $e');
+
+      // 顯示連線失敗警告
+      _startTypingEffect('⚠️ 後端未連線！請先啟動 backend_mock.js');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.error, color: Colors.white),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text('❌ 後端未連線\n請執行: node backend_mock.js'),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 5),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  // 新增：定期檢查後端健康狀態
+  void _startBackendHealthCheck() {
+    _backendHealthCheck = Timer.periodic(const Duration(seconds: 30), (timer) {
+      _checkBackendConnection();
+    });
+  }
+
+  // 新增：通知家人（自訂訊息）
+  Future<void> _notifyFamily(String message) async {
+    if (!_isBackendConnected) {
+      _showBackendNotConnectedError();
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$backendUrl/notify-family'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'message': message,
+              'userId': mockUserId,
+              'latitude': _currentPosition.latitude,
+              'longitude': _currentPosition.longitude,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final result = jsonDecode(utf8.decode(response.bodyBytes));
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  Icon(
+                    result['success'] ? Icons.check_circle : Icons.error,
+                    color: Colors.white,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      result['success']
+                          ? '訊息已發送給家人'
+                          : '❌ 訊息發送失敗: ${result['error']}',
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: result['success'] ? Colors.green : Colors.red,
+              duration: const Duration(seconds: 4),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+
+        print('通知家人結果: ${result['message']}');
+      }
+    } catch (e) {
+      print('通知家人失敗: $e');
+      _showApiError('通知家人失敗', e.toString());
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  // 新增：查看所有警報
+  Future<void> _viewAllAlerts() async {
+    if (!_isBackendConnected) {
+      _showBackendNotConnectedError();
+      return;
+    }
+
+    try {
+      final response = await http
+          .get(Uri.parse('$backendUrl/alerts'))
+          .timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final result = jsonDecode(utf8.decode(response.bodyBytes));
+        final alertsCount = result['count'] ?? 0;
+        final alerts = result['alerts'] as List;
+
+        print('📋 警報總數: $alertsCount');
+        for (var alert in alerts) {
+          print(
+              '   - ${alert['alertId']}: ${alert['triggerType']} (${alert['status']})');
+        }
+
+        // 顯示警報列表對話框
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: Text('警報記錄 ($alertsCount 筆)'),
+              content: SizedBox(
+                width: double.maxFinite,
+                height: 300,
+                child: alerts.isEmpty
+                    ? const Center(child: Text('目前沒有警報記錄'))
+                    : ListView.builder(
+                        itemCount: alerts.length,
+                        itemBuilder: (context, index) {
+                          final alert = alerts[index];
+                          return ListTile(
+                            leading: Icon(
+                              alert['isCancelled']
+                                  ? Icons.check_circle
+                                  : Icons.warning,
+                              color: alert['isCancelled']
+                                  ? Colors.green
+                                  : Colors.orange,
+                            ),
+                            title: Text(alert['triggerType']),
+                            subtitle: Text(
+                              '${alert['alertId']}\n風險: ${alert['riskScore']}/100',
+                            ),
+                            isThreeLine: true,
+                          );
+                        },
+                      ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('關閉'),
+                ),
+              ],
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('查看警報失敗: $e');
+      _showApiError('查看警報失敗', e.toString());
+    }
+  }
+
+  // 新增：顯示後端未連線錯誤
+  void _showBackendNotConnectedError() {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.error, color: Colors.white),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text('❌ 後端未連線\n請先啟動: node backend_mock.js'),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 4),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  // 新增：顯示 API 錯誤
+  void _showApiError(String title, String error) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error, color: Colors.white),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text('❌ $title\n$error'),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
   // --- API 呼叫 ---
   Future<void> _checkRiskArea() async {
+    // 檢查後端連線
+    if (!_isBackendConnected) {
+      _showBackendNotConnectedError();
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -201,8 +478,8 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
             Uri.parse('$backendUrl/check-risk'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
-              'latitude': mockLatitude,
-              'longitude': mockLongitude,
+              'latitude': _currentPosition.latitude,
+              'longitude': _currentPosition.longitude,
             }),
           )
           .timeout(const Duration(seconds: 5));
@@ -218,17 +495,23 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
           }
         });
 
-        //  啟動打字機效果
         _startTypingEffect(riskInfo.message);
       }
     } catch (e) {
       print('API Error: $e');
+      _showApiError('風險檢查失敗', e.toString());
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
   Future<void> _triggerBackendAlert() async {
+    // 檢查後端連線
+    if (!_isBackendConnected) {
+      _showBackendNotConnectedError();
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -238,8 +521,8 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
               'userId': mockUserId,
-              'latitude': mockLatitude,
-              'longitude': mockLongitude,
+              'latitude': _currentPosition.latitude,
+              'longitude': _currentPosition.longitude,
               'contactNumber': mockContactNumber,
               'triggerType': 'PIN_PULL',
             }),
@@ -249,9 +532,13 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
       if (response.statusCode == 200) {
         final result = jsonDecode(utf8.decode(response.bodyBytes));
         setState(() => _currentAlertId = result['alertId']);
+
+        print('🚨 警報已觸發: ${result['alertId']}');
+        print('   簡訊已發送: ${result['smsDelivered']}');
       }
     } catch (e) {
       print('API Error: $e');
+      _showApiError('警報觸發失敗', e.toString());
     } finally {
       setState(() => _isLoading = false);
     }
@@ -262,7 +549,6 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
 
     _timer?.cancel();
 
-    // 播放縮小消失動畫
     _dialogController?.reverse();
 
     await Future.delayed(const Duration(milliseconds: 300));
@@ -273,8 +559,14 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
       _countdown = 10;
     });
 
+    // 檢查後端連線
+    if (!_isBackendConnected) {
+      _showBackendNotConnectedError();
+      setState(() => _isLoading = false);
+      return;
+    }
+
     try {
-      // ✅ 呼叫後端取消警報 API（會自動發送平安簡讯）
       final response = await http
           .post(
             Uri.parse('$backendUrl/cancel'),
@@ -288,7 +580,6 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
 
         setState(() => _currentAlertId = null);
 
-        // ✅ 顯示簡訊發送結果
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -304,7 +595,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                   Expanded(
                     child: Text(
                       result['smsDelivered'] == true
-                          ? '✅ 已通知緊急聯絡人：您已平安'
+                          ? '已通知緊急聯絡人：您已平安'
                           : '⚠️ 警報已取消，但簡訊發送失敗',
                     ),
                   ),
@@ -326,7 +617,6 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     } catch (e) {
       print('API Error: $e');
 
-      // ✅ 顯示錯誤訊息
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -346,7 +636,6 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
         );
       }
     } finally {
-      // ✅ 確保在 finally 區塊中恢復狀態
       setState(() => _isLoading = false);
     }
   }
@@ -397,11 +686,11 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
         } else {
           // 充電完成
           chargeTimer.cancel();
-          print(' 充電完成！電量恢復到 100%');
+          print('充電完成！電量恢復到 100%');
 
           // 顯示充電完成訊息
-          _riskMessage = ' 充電完成！電量已恢復到 100%';
-          _startTypingEffect(' 充電完成！電量已恢復到 100%');
+          _riskMessage = '充電完成！電量已恢復到 100%';
+          _startTypingEffect('充電完成！電量已恢復到 100%');
           _hasShownLowBatteryWarning = false;
 
           // 3 秒後清除訊息並重新開始消耗
@@ -422,11 +711,11 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
   // 新增：顯示低電量警告
   void _showLowBatteryWarning() {
     setState(() {
-      _riskMessage = '記得充電喔！電量剩餘 $_batteryLevel%';
+      _riskMessage = '⚠️ 記得充電喔！電量剩餘 $_batteryLevel%';
     });
 
     //  啟動打字機效果
-    _startTypingEffect('記得充電喔！電量剩餘 $_batteryLevel%');
+    _startTypingEffect('⚠️ 記得充電喔！電量剩餘 $_batteryLevel%');
 
     // 可選：發出聲音或震動提示
     print('⚠️ 低電量警告：電量剩餘 $_batteryLevel%');
@@ -472,6 +761,12 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
   // --- 前端邏輯 ---
   void _simulateAlert() {
     if (_isAlerting) return;
+
+    // 檢查後端連線
+    if (!_isBackendConnected) {
+      _showBackendNotConnectedError();
+      return;
+    }
 
     setState(() {
       _isAlerting = true;
@@ -520,6 +815,12 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
 
   // --- 測試簡訊發送 ---
   Future<void> _testSms() async {
+    // 檢查後端連線
+    if (!_isBackendConnected) {
+      _showBackendNotConnectedError();
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -541,7 +842,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(result['success']
-                  ? '✅ 測試簡訊已發送！訊息 ID: ${result['messageSid']}'
+                  ? '測試簡訊已發送！訊息 ID: ${result['messageSid']}'
                   : '❌ 簡訊發送失敗: ${result['error']}'),
               backgroundColor: result['success'] ? Colors.green : Colors.red,
               duration: const Duration(seconds: 4),
@@ -555,16 +856,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
       }
     } catch (e) {
       print('測試簡訊失敗: $e');
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ 測試簡訊失敗: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
+      _showApiError('測試簡訊失敗', e.toString());
     } finally {
       setState(() => _isLoading = false);
     }
@@ -580,12 +872,56 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
           _buildBatteryIndicator(),
           _buildMapButton(),
           _buildUserInfoCard(),
-          _buildSafeBuddyCharacter(), // 小精靈角色
-          _buildSafeBuddyDialog(), // 小精靈對話框
-          // _buildMapOpenButton(), //  新增：獨立的地圖開啟按鈕
+          _buildSafeBuddyCharacter(),
+          _buildSafeBuddyDialog(),
           if (_showTopNotification) _buildTopNotification(),
           if (_showCenterDialog) _buildCenterDialog(),
+          // 新增：後端連線狀態指示器
+          _buildBackendStatusIndicator(),
         ],
+      ),
+    );
+  }
+
+  // 新增：後端連線狀態指示器
+  Widget _buildBackendStatusIndicator() {
+    return Positioned(
+      top: 100,
+      right: 10,
+      child: GestureDetector(
+        onTap: _checkBackendConnection, // 點擊重新檢查連線
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: _isBackendConnected
+                ? Colors.green.withValues(alpha: 0.15)
+                : Colors.red.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(
+              color: _isBackendConnected ? Colors.green : Colors.red,
+              width: 1.5,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                _isBackendConnected ? Icons.cloud_done : Icons.cloud_off,
+                color: _isBackendConnected ? Colors.green : Colors.red,
+                size: 16,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                _isBackendConnected ? '後端連線' : '後端離線',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: _isBackendConnected ? Colors.green : Colors.red,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -754,7 +1090,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                     // 對話框保持顯示電量或打招呼（不改變）
                   } else {
                     //  安全區域：清除危險訊息，顯示安全橫幅
-                    _riskMessage = ' 目前位置安全，請放心！'; // 設定安全訊息
+                    _riskMessage = '目前位置安全，請放心！'; // 設定安全訊息
                     _dangerZoneMessage = ''; // 清空危險訊息
                     _isInDangerZone = false;
                     _showTopNotificationBanner(); // 顯示安全橫幅
@@ -785,8 +1121,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
       left: 0,
       right: 0,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(
-            20, 15, 20, 16), //  減少上方 padding（原本 50, 20）
+        padding: const EdgeInsets.fromLTRB(20, 15, 20, 16),
         decoration: BoxDecoration(
           color:
               const Color.fromARGB(255, 153, 168, 153).withValues(alpha: 0.8),
@@ -808,7 +1143,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
             Row(
               children: [
                 CircleAvatar(
-                  radius: 28, //  稍微縮小（原本 30）
+                  radius: 28,
                   backgroundColor: Colors.teal.shade100,
                   child: const Icon(Icons.person, size: 32, color: Colors.teal),
                 ),
@@ -837,14 +1172,48 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                 ),
               ],
             ),
-            const SizedBox(height: 10), //  減少間距（原本 12）
+            const SizedBox(height: 10),
             Row(
               children: [
+                // 修改：分享位置改為通知家人
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () {},
-                    icon: const Icon(Icons.share, size: 16),
-                    label: const Text('分享位置', style: TextStyle(fontSize: 12)),
+                    onPressed: () {
+                      // 顯示輸入對話框
+                      showDialog(
+                        context: context,
+                        builder: (context) {
+                          final controller = TextEditingController();
+                          return AlertDialog(
+                            title: const Text('通知家人'),
+                            content: TextField(
+                              controller: controller,
+                              decoration: const InputDecoration(
+                                hintText: '輸入要發送的訊息',
+                              ),
+                              maxLines: 3,
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('取消'),
+                              ),
+                              TextButton(
+                                onPressed: () {
+                                  if (controller.text.isNotEmpty) {
+                                    _notifyFamily(controller.text);
+                                    Navigator.pop(context);
+                                  }
+                                },
+                                child: const Text('發送'),
+                              ),
+                            ],
+                          );
+                        },
+                      );
+                    },
+                    icon: const Icon(Icons.message, size: 16),
+                    label: const Text('通知家人', style: TextStyle(fontSize: 12)),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.teal,
                       side: BorderSide(color: Colors.teal.shade300),
@@ -856,11 +1225,12 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                   ),
                 ),
                 const SizedBox(width: 10),
+                // 修改：設定改為查看警報
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () {},
-                    icon: const Icon(Icons.settings, size: 16),
-                    label: const Text('設定', style: TextStyle(fontSize: 12)),
+                    onPressed: _viewAllAlerts,
+                    icon: const Icon(Icons.history, size: 16),
+                    label: const Text('警報記錄', style: TextStyle(fontSize: 12)),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.teal,
                       side: BorderSide(color: Colors.teal.shade300),
@@ -886,19 +1256,17 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
       right: 0,
       top: 460,
       child: Center(
-        child: Container(
+        child: SizedBox(
           width: 300,
           height: 300,
           child: Image.asset(
             'assets/image/fairy_map.gif',
             fit: BoxFit.contain,
             errorBuilder: (context, error, stackTrace) {
-              // GIF 載入失敗時顯示靜態圖片
               return Image.asset(
                 'assets/image/fairy_map.png',
                 fit: BoxFit.contain,
                 errorBuilder: (context, error, stackTrace) {
-                  // 都失敗時顯示圖示
                   return Icon(
                     Icons.smart_toy,
                     size: 170,
@@ -923,7 +1291,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
 
     if (_batteryLevel <= 20) {
       // 優先級1：低電量警告
-      targetMessage = '記得充電喔！電量剩餘 $_batteryLevel%';
+      targetMessage = '⚠️ 記得充電喔！電量剩餘 $_batteryLevel%';
       borderColor = const Color.fromARGB(255, 115, 229, 159);
       shadowColor =
           const Color.fromARGB(255, 59, 108, 75).withValues(alpha: 0.25);
@@ -953,7 +1321,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
 
         Future.delayed(Duration(seconds: remainingTime), () {
           if (mounted && _fullMessage != targetMessage && !_isTyping) {
-            print(' 延遲後切換訊息: $targetMessage');
+            print('延遲後切換訊息: $targetMessage');
             setState(() {
               _lastMessageChangeTime = DateTime.now();
             });
@@ -962,7 +1330,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
         });
       } else {
         //  首次顯示也等待 3 秒（可選：如果希望首次立即顯示，改為 0）
-        print(' 首次顯示訊息（等待 3 秒）: $targetMessage');
+        print('🎬 首次顯示訊息（等待 3 秒）: $targetMessage');
         Future.delayed(const Duration(seconds: 3), () {
           if (mounted && _fullMessage != targetMessage && !_isTyping) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1020,7 +1388,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                 if (_isTyping)
                   Container(
                     margin: const EdgeInsets.only(left: 2),
-                    child: _BlinkingCursor(),
+                    child: const _BlinkingCursor(),
                   ),
               ],
             ),
@@ -1073,7 +1441,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
       }
     } else {
       // 預設訊息（不應該顯示，但作為安全後備）
-      notificationMessage = ' 目前位置安全';
+      notificationMessage = '目前位置安全';
       backgroundColor = Colors.green.shade50;
       borderColor = Colors.green.shade300;
       iconColor = Colors.green.shade600;
@@ -1183,13 +1551,13 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                     padding: const EdgeInsets.all(20),
                     width: 280,
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
+                      gradient: const LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          const Color(0xFFFFF9E6), // 淡黃色
-                          const Color(0xFFFFFBF0), // 象牙白
-                          const Color(0xFFFFFAE6), // 淡奶油黃
+                          Color(0xFFFFF9E6), // 淡黃色
+                          Color(0xFFFFFBF0), // 象牙白
+                          Color(0xFFFFFAE6), // 淡奶油黃
                         ],
                       ),
                       borderRadius: BorderRadius.circular(25),
@@ -1367,8 +1735,8 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                               padding: const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(15),
-                                side: BorderSide(
-                                  color: const Color(0xFFFFD54F),
+                                side: const BorderSide(
+                                  color: Color(0xFFFFD54F),
                                   width: 2,
                                 ),
                               ),
@@ -1377,10 +1745,10 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(
+                                const Icon(
                                   Icons.check_circle,
                                   size: 22,
-                                  color: const Color(0xFFFFC107),
+                                  color: Color(0xFFFFC107),
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
@@ -1421,10 +1789,9 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                         'assets/image/fairy_speaking.png',
                         fit: BoxFit.contain,
                         errorBuilder: (context, error, stackTrace) {
-                          // 如果圖片載入失敗，顯示可愛的替代圖示
                           return Container(
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
+                            decoration: const BoxDecoration(
+                              gradient: LinearGradient(
                                 colors: [
                                   Color(0xFFFFE082),
                                   Color(0xFFFFD54F),
