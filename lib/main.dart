@@ -10,8 +10,17 @@ import 'package:window_manager/window_manager.dart';
 import 'package:latlong2/latlong.dart';
 import 'map_page.dart';
 
+import 'dart:io';
+import 'login_page.dart';
+import 'editUser_page.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  
+  sqfliteFfiInit();
+  databaseFactory = databaseFactoryFfi;
 
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     await windowManager.ensureInitialized();
@@ -152,6 +161,9 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
   bool _isTyping = false;
 
   DateTime? _lastMessageChangeTime;
+
+  String userName = '';
+  String userId = '';
 
   @override
   void initState() {
@@ -640,7 +652,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     }
   }
 
-// 新增：電量模擬器（每 10 秒降低 1%，降到 0% 後自動恢復到 100%）
+  // 新增：電量模擬器（每 10 秒降低 1%，降到 0% 後自動恢復到 100%）
   void _startBatterySimulator() {
     _batterySimulator = Timer.periodic(const Duration(seconds: 10), (timer) {
       setState(() {
@@ -1116,6 +1128,14 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
 
   // 使用者資訊卡片
   Widget _buildUserInfoCard() {
+    final bool isLoggedIn = userId.isNotEmpty;
+    File? avatarFile;
+    if (isLoggedIn) {
+      final avatarPath = '${Directory.current.path}\\database\\avatars\\$userId.png';
+      avatarFile = File(avatarPath);
+      if (!avatarFile.existsSync()) avatarFile = null;
+    }
+
     return Positioned(
       top: 0,
       left: 0,
@@ -1123,14 +1143,13 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
       child: Container(
         padding: const EdgeInsets.fromLTRB(20, 15, 20, 16),
         decoration: BoxDecoration(
-          color:
-              const Color.fromARGB(255, 153, 168, 153).withValues(alpha: 0.8),
+          color: const Color.fromARGB(255, 153, 168, 153).withOpacity(0.8),
           borderRadius: const BorderRadius.vertical(
             bottom: Radius.circular(30),
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
+              color: Colors.black.withOpacity(0.1),
               blurRadius: 10,
               spreadRadius: 2,
             ),
@@ -1142,26 +1161,43 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
           children: [
             Row(
               children: [
-                CircleAvatar(
-                  radius: 28,
-                  backgroundColor: Colors.teal.shade100,
-                  child: const Icon(Icons.person, size: 32, color: Colors.teal),
+                GestureDetector(
+                  onTap: () async {
+                    if (!isLoggedIn) return;
+                    final result = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => EditUserPage(userId: userId),
+                      ),
+                    );
+                    if (result == true) {
+                      setState(() {
+                        // 重新載入 avatar / username
+                      });
+                    }
+                  },
+                  child: CircleAvatar(
+                    radius: 28,
+                    backgroundColor: Colors.teal.shade100,
+                    backgroundImage: (avatarFile != null) ? FileImage(avatarFile) : null,
+                    child: (avatarFile == null) ? const Icon(Icons.person, size: 32, color: Colors.teal) : null,
+                  ),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Adventurer Name',
-                        style: TextStyle(
+                      Text(
+                        isLoggedIn ? userName : '未登入',
+                        style: const TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        '使用者 ID: $mockUserId',
+                        isLoggedIn ? '使用者 ID: $userId' : '',
                         style: TextStyle(
                           fontSize: 11,
                           color: Colors.grey.shade600,
@@ -1170,16 +1206,49 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                     ],
                   ),
                 ),
+                const SizedBox(width: 10),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    if (isLoggedIn) {
+                      setState(() {
+                        userId = '';
+                        userName = '';
+                      });
+                    } else {
+                      final result = await Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const LoginPage()),
+                      );
+                      if (result != null && result is Map<String, dynamic>) {
+                        setState(() {
+                          userId = result['userId'] ?? '';
+                          userName = result['name'] ?? '';
+                        });
+                      }
+                    }
+                  },
+                  icon: Icon(isLoggedIn ? Icons.logout : Icons.login, size: 16),
+                  label: Text(
+                    isLoggedIn ? '登出' : '登入',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.teal,
+                    side: BorderSide(color: Colors.teal.shade400),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 10),
             Row(
               children: [
-                // 修改：分享位置改為通知家人
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: () {
-                      // 顯示輸入對話框
                       showDialog(
                         context: context,
                         builder: (context) {
@@ -1225,7 +1294,6 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                   ),
                 ),
                 const SizedBox(width: 10),
-                // 修改：設定改為查看警報
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: _viewAllAlerts,
