@@ -14,6 +14,9 @@ import 'dart:io';
 import 'login_page.dart';
 import 'editUser_page.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'database/database_helper.dart'; // 改成你 DatabaseHelper 檔案路徑
+import 'package:intl/intl.dart';
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -360,75 +363,96 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
 
   // 新增：查看所有警報
   Future<void> _viewAllAlerts() async {
-    if (!_isBackendConnected) {
-      _showBackendNotConnectedError();
-      return;
-    }
-
     try {
-      final response = await http
-          .get(Uri.parse('$backendUrl/alerts'))
-          .timeout(const Duration(seconds: 5));
+      // 從資料庫抓取所有 alert
+      final alerts = await DatabaseHelper.instance.getAlertsByUserId(userId);
 
-      if (response.statusCode == 200) {
-        final result = jsonDecode(utf8.decode(response.bodyBytes));
-        final alertsCount = result['count'] ?? 0;
-        final alerts = result['alerts'] as List;
+      final alertsCount = alerts.length;
 
-        print('📋 警報總數: $alertsCount');
-        for (var alert in alerts) {
-          print(
-              '   - ${alert['alertId']}: ${alert['triggerType']} (${alert['status']})');
-        }
+      print('📋 警報總數: $alertsCount');
+      for (var alert in alerts) {
+        print(
+            '   - ${alert['id']}: ${alert['category']} at ${alert['time']} (${alert['area']})');
+      }
 
-        // 顯示警報列表對話框
-        if (mounted) {
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: Text('警報記錄 ($alertsCount 筆)'),
-              content: SizedBox(
-                width: double.maxFinite,
-                height: 300,
-                child: alerts.isEmpty
-                    ? const Center(child: Text('目前沒有警報記錄'))
-                    : ListView.builder(
-                        itemCount: alerts.length,
-                        itemBuilder: (context, index) {
-                          final alert = alerts[index];
-                          return ListTile(
-                            leading: Icon(
-                              alert['isCancelled']
-                                  ? Icons.check_circle
-                                  : Icons.warning,
-                              color: alert['isCancelled']
-                                  ? Colors.green
-                                  : Colors.orange,
-                            ),
-                            title: Text(alert['triggerType']),
-                            subtitle: Text(
-                              '${alert['alertId']}\n風險: ${alert['riskScore']}/100',
-                            ),
-                            isThreeLine: true,
-                          );
-                        },
-                      ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('關閉'),
-                ),
-              ],
+      // 顯示警報列表對話框
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('警報記錄 ($alertsCount 筆)'),
+            content: SizedBox(
+              width: double.maxFinite,
+              height: 300,
+              child: alerts.isEmpty
+                  ? const Center(child: Text('目前沒有警報記錄'))
+                  : ListView.builder(
+                      itemCount: alerts.length,
+                      itemBuilder: (context, index) {
+                        final alert = alerts[index];
+
+                        // 格式化時間
+                        final time = DateTime.parse(alert['time']);
+                        final formattedTime =
+                            DateFormat('yyyy-MM-dd HH:mm:ss').format(time);
+
+                        // 根據 category 選顏色
+                        Color getAlertColor(String category) {
+                          switch (category) {
+                            case '誤觸警報':
+                              return Colors.green;
+                            case '觸發警報':
+                              return Colors.red;
+                            case '自動記錄':
+                              return Colors.orange;
+                            default:
+                              return Colors.white;
+                          }
+                        }
+
+                        return ListTile(
+                          leading: Icon(
+                            Icons.warning,
+                            color: getAlertColor(alert['category']),
+                          ),
+                          title: Text(alert['category']),
+                          subtitle: Text(
+                            '區域: ${alert['area']}\n時間: $formattedTime\n',
+                          ),
+                          isThreeLine: true,
+                        );
+                      },
+                    ),
             ),
-          );
-        }
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('關閉'),
+              ),
+            ],
+          ),
+        );
       }
     } catch (e) {
       print('查看警報失敗: $e');
-      _showApiError('查看警報失敗', e.toString());
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('錯誤'),
+            content: Text('查看警報失敗: $e'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('關閉'),
+              ),
+            ],
+          ),
+        );
+      }
     }
   }
+
 
   // 新增：顯示後端未連線錯誤
   void _showBackendNotConnectedError() {
@@ -526,6 +550,17 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
 
     setState(() => _isLoading = true);
 
+    final alert = {
+      'area': '無',
+      'category': '觸發警報',
+      'time': DateTime.now().toIso8601String(),
+      'userId': userId,
+    };
+
+    // 寫入資料庫
+    await DatabaseHelper.instance.insertAlert(alert);
+    
+
     try {
       final response = await http
           .post(
@@ -558,6 +593,16 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
 
   Future<void> _cancelAlert() async {
     setState(() => _isLoading = true);
+
+    final alert = {
+      'area': '無',
+      'category': '誤觸警報',
+      'time': DateTime.now().toIso8601String(),
+      'userId': userId,
+    };
+
+    // 寫入資料庫
+    await DatabaseHelper.instance.insertAlert(alert);
 
     _timer?.cancel();
 
@@ -678,7 +723,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     });
   }
 
-// 新增：充電動畫（模擬從 0% 充到 100%）
+  // 新增：充電動畫（模擬從 0% 充到 100%）
   void _chargeBattery() {
     // 暫停電量消耗
     _batterySimulator?.cancel();
@@ -1069,6 +1114,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
 
   // 左下角地圖按鈕
   Widget _buildMapButton() {
+    final bool isLoggedIn = userId.isNotEmpty;
     return Positioned(
       bottom: 150,
       left: 16,
@@ -1084,6 +1130,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                 MaterialPageRoute(
                   builder: (context) => MapPage(
                     initialPosition: _currentPosition,
+                    userId: isLoggedIn ? userId.toString() : '0',
                   ),
                 ),
               );
@@ -1349,7 +1396,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     );
   }
 
-//  對話框（只顯示電量和打招呼訊息）
+  //  對話框（只顯示電量和打招呼訊息）
   Widget _buildSafeBuddyDialog() {
     //  決定要顯示的訊息類型（不包含危險提示）
     String targetMessage;
@@ -1466,7 +1513,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     );
   }
 
-// 上方危險通知橫幅（包含安全提示）
+  // 上方危險通知橫幅（包含安全提示）
   Widget _buildTopNotification() {
     //  處理所有與位置相關的訊息
     String notificationMessage;
@@ -1909,6 +1956,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
       },
     );
   }
+
 }
 
 // 打字機效果：閃爍游標元件

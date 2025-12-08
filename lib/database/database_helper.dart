@@ -16,11 +16,9 @@ class DatabaseHelper {
   }
 
   Future<Database> _initDatabase() async {
-    // 專案根目錄 (假設 main.dart 在 lib/)
     final projectDir = Directory.current.path;
     final dbDir = Directory(join(projectDir, 'database'));
-    
-    // 如果資料夾不存在就建立
+
     if (!await dbDir.exists()) {
       await dbDir.create(recursive: true);
     }
@@ -30,14 +28,27 @@ class DatabaseHelper {
     return await databaseFactory.openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 1,
+        version: 1, // 第一次建就用 version 1
         onCreate: (db, version) async {
+          // 建立 users table
           await db.execute('''
             CREATE TABLE users (
               userId TEXT PRIMARY KEY,
               username TEXT NOT NULL,
               password TEXT NOT NULL,
               name TEXT NOT NULL
+            )
+          ''');
+
+          // 建立 alerts table
+          await db.execute('''
+            CREATE TABLE alerts (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              area TEXT NOT NULL,
+              category TEXT NOT NULL,
+              time TEXT NOT NULL,
+              userId TEXT NOT NULL,
+              FOREIGN KEY(userId) REFERENCES users(userId) ON DELETE CASCADE
             )
           ''');
         },
@@ -109,7 +120,21 @@ class DatabaseHelper {
     return 'success';
   }
 
+  Future<int> insertAlert(Map<String, dynamic> alert) async {
+    final db = await database;
+    return await db.insert('alerts', alert);
+  }
 
+  // 取得某使用者的所有 alerts
+  Future<List<Map<String, dynamic>>> getAlertsByUserId(String userId) async {
+    final db = await database;
+    return await db.query(
+      'alerts',
+      where: 'userId = ?',
+      whereArgs: [userId],
+      orderBy: 'time DESC', // 可依時間排序，最新的在前面
+    );
+  }
 
   // 其他方法保持不變
   Future<Map<String, dynamic>?> getUserByUsername(String username) async {

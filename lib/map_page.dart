@@ -4,12 +4,16 @@ import 'package:latlong2/latlong.dart';
 import 'dart:convert';
 import 'package:flutter/services.dart';
 
+import '../database/database_helper.dart';
+
 class MapPage extends StatefulWidget {
   final LatLng initialPosition; //  接收初始位置
+  final String userId;
 
   const MapPage({
     super.key,
     required this.initialPosition, //  必須傳入初始位置
+    required this.userId,
   });
 
   @override
@@ -27,6 +31,9 @@ class _MapPageState extends State<MapPage> {
   bool _showCrimeZones = true;
   bool _showAccidentZones = true;
   bool _showDangerIntersections = true;
+
+  LatLng? _lastAlertPosition; // 紀錄上一次 alert 的位置
+  final double _alertDistanceThreshold = 50; // 公尺
 
   @override
   void initState() {
@@ -241,6 +248,75 @@ class _MapPageState extends State<MapPage> {
     }
   }
 
+  Future<void> _checkAndInsertAlert(String userId) async {
+    // 如果使用者 ID 是 0 或 "0"，不新增 alert
+    if (userId == '0' || userId == 0) return;
+
+    if (_isInDangerZone()) {
+      if (_lastAlertPosition == null ||
+          _calculateDistance(_currentPosition, _lastAlertPosition!) >
+              _alertDistanceThreshold) {
+
+        String category = '';
+        if (_showCrimeZones) {
+          for (int i = 0; i < _crimePolygons.length; i += 4) {
+            if (i + 3 < _crimePolygons.length) {
+              List<LatLng> polygon = [
+                _crimePolygons[i],
+                _crimePolygons[i + 1],
+                _crimePolygons[i + 2],
+                _crimePolygons[i + 3],
+              ];
+              if (_isPointInPolygon(_currentPosition, polygon)) {
+                category = '犯罪熱點';
+                break;
+              }
+            }
+          }
+        }
+
+        if (category.isEmpty && _showAccidentZones) {
+          for (int i = 0; i < _accidentPolygons.length; i += 4) {
+            if (i + 3 < _accidentPolygons.length) {
+              List<LatLng> polygon = [
+                _accidentPolygons[i],
+                _accidentPolygons[i + 1],
+                _accidentPolygons[i + 2],
+                _accidentPolygons[i + 3],
+              ];
+              if (_isPointInPolygon(_currentPosition, polygon)) {
+                category = '事故多發區';
+                break;
+              }
+            }
+          }
+        }
+
+        if (category.isEmpty && _showDangerIntersections) {
+          for (var intersection in _dangerIntersections) {
+            if (_calculateDistance(_currentPosition, intersection) < 50) {
+              category = '危險路口';
+              break;
+            }
+          }
+        }
+
+        if (category.isNotEmpty) {
+          final alert = {
+            'area': '${category}',
+            'category': '自動記錄',
+            'time': DateTime.now().toIso8601String(),
+            'userId': userId,
+          };
+          await DatabaseHelper.instance.insertAlert(alert);
+          _lastAlertPosition = _currentPosition;
+          print('⚠️ 新增 alert: $category at $_currentPosition');
+        }
+      }
+    }
+  }
+
+
   //  修改：返回時傳遞位置資料
   void _goBack() {
     Navigator.pop(context, {
@@ -275,6 +351,7 @@ class _MapPageState extends State<MapPage> {
                 setState(() {
                   _currentPosition = point;
                 });
+                _checkAndInsertAlert(widget.userId);
                 print('📍 位置已更新: ${point.latitude}, ${point.longitude}');
               },
             ),
