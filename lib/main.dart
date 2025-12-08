@@ -18,7 +18,6 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
 
@@ -253,7 +252,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
         print('   警報數量: ${status.alertsCount}');
 
         // 顯示連線成功訊息
-        _startTypingEffect('🎉 後端連線成功！系統已就緒。');
+        _startTypingEffect(' 後端連線成功！系統已就緒。');
       } else {
         throw Exception('後端回應錯誤: ${response.statusCode}');
       }
@@ -263,10 +262,10 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
         _backendStatus = null;
       });
 
-      print('❌ 後端連線失敗: $e');
+      print('後端連線失敗: $e');
 
       // 顯示連線失敗警告
-      _startTypingEffect('⚠️ 後端未連線！請先啟動 backend_mock.js');
+      _startTypingEffect('後端未連線！請先啟動 backend_mock.js');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -276,7 +275,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                 Icon(Icons.error, color: Colors.white),
                 SizedBox(width: 10),
                 Expanded(
-                  child: Text('❌ 後端未連線\n請執行: node backend_mock.js'),
+                  child: Text('後端未連線\n請執行: node backend_mock.js'),
                 ),
               ],
             ),
@@ -336,7 +335,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                     child: Text(
                       result['success']
                           ? '訊息已發送給家人'
-                          : '❌ 訊息發送失敗: ${result['error']}',
+                          : '訊息發送失敗: ${result['error']}',
                     ),
                   ),
                 ],
@@ -375,7 +374,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
         final alertsCount = result['count'] ?? 0;
         final alerts = result['alerts'] as List;
 
-        print('📋 警報總數: $alertsCount');
+        print(' 警報總數: $alertsCount');
         for (var alert in alerts) {
           print(
               '   - ${alert['alertId']}: ${alert['triggerType']} (${alert['status']})');
@@ -399,8 +398,8 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                           return ListTile(
                             leading: Icon(
                               alert['isCancelled']
-                                  ? Icons.check_circle
-                                  : Icons.warning,
+                                  ? Icons.check_circle // 警報已取消(為誤觸)
+                                  : Icons.warning, // 有效警報
                               color: alert['isCancelled']
                                   ? Colors.green
                                   : Colors.orange,
@@ -440,7 +439,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
               Icon(Icons.error, color: Colors.white),
               SizedBox(width: 10),
               Expanded(
-                child: Text('❌ 後端未連線\n請先啟動: node backend_mock.js'),
+                child: Text('後端未連線\n請先啟動: node backend_mock.js'),
               ),
             ],
           ),
@@ -462,7 +461,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
               const Icon(Icons.error, color: Colors.white),
               const SizedBox(width: 10),
               Expanded(
-                child: Text('❌ $title\n$error'),
+                child: Text('$title\n$error'),
               ),
             ],
           ),
@@ -495,6 +494,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
             }),
           )
           .timeout(const Duration(seconds: 5));
+//========================================================
 
       if (response.statusCode == 200) {
         final result = jsonDecode(utf8.decode(response.bodyBytes));
@@ -516,6 +516,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
       setState(() => _isLoading = false);
     }
   }
+//========================================================
 
   Future<void> _triggerBackendAlert() async {
     // 檢查後端連線
@@ -545,8 +546,8 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
         final result = jsonDecode(utf8.decode(response.bodyBytes));
         setState(() => _currentAlertId = result['alertId']);
 
-        print('🚨 警報已觸發: ${result['alertId']}');
-        print('   簡訊已發送: ${result['smsDelivered']}');
+        print('警報已觸發: ${result['alertId']}');
+        print('簡訊已發送: ${result['smsDelivered']}');
       }
     } catch (e) {
       print('API Error: $e');
@@ -608,7 +609,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                     child: Text(
                       result['smsDelivered'] == true
                           ? '已通知緊急聯絡人：您已平安'
-                          : '⚠️ 警報已取消，但簡訊發送失敗',
+                          : '警報已取消，但簡訊發送失敗',
                     ),
                   ),
                 ],
@@ -637,7 +638,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                 const Icon(Icons.warning, color: Colors.white),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text('❌ 取消警報失敗: $e'),
+                  child: Text('取消警報失敗: $e'),
                 ),
               ],
             ),
@@ -671,7 +672,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
           }
         } else {
           //  電量降到 0% 時，自動充電到 100%
-          print('🔋 電量耗盡，自動充電中...');
+          print('電量耗盡，自動充電中...');
           _chargeBattery();
         }
       });
@@ -685,9 +686,9 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
 
     // 顯示充電訊息
     setState(() {
-      _riskMessage = '🔌 電量耗盡，正在快速充電中...';
+      _riskMessage = '電量耗盡，正在快速充電中...';
     });
-    _startTypingEffect('🔌 電量耗盡，正在快速充電中...');
+    _startTypingEffect('電量耗盡，正在快速充電中...');
 
     // 快速充電動畫（每 0.1 秒增加 10%）
     Timer.periodic(const Duration(milliseconds: 100), (chargeTimer) {
@@ -723,17 +724,16 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
   // 新增：顯示低電量警告
   void _showLowBatteryWarning() {
     setState(() {
-      _riskMessage = '⚠️ 記得充電喔！電量剩餘 $_batteryLevel%';
+      _riskMessage = '記得充電喔！電量剩餘 $_batteryLevel%';
     });
 
     //  啟動打字機效果
-    _startTypingEffect('⚠️ 記得充電喔！電量剩餘 $_batteryLevel%');
+    _startTypingEffect('記得充電喔！電量剩餘 $_batteryLevel%');
 
     // 可選：發出聲音或震動提示
-    print('⚠️ 低電量警告：電量剩餘 $_batteryLevel%');
+    print('低電量警告：電量剩餘 $_batteryLevel%');
   }
 
-  //  新增：打字機效果方法
   void _startTypingEffect(String message) {
     // 如果訊息相同，不重複打字
     // if (_fullMessage == message && !_isTyping) {
@@ -750,7 +750,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
       _isTyping = true;
     });
 
-    // 開始打字動畫（每 50 毫秒顯示一個字元）
+    // 開始打字動畫
     _typingTimer = Timer.periodic(
       const Duration(milliseconds: 50), //  打字速度（可調整）
       (timer) {
@@ -842,7 +842,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
               'phoneNumber': mockContactNumber, // 使用現有的緊急聯絡人號碼
-              'message': '🧪 SafeBuddy 測試訊息：系統運作正常！',
+              'message': 'SafeBuddy 測試訊息：系統運作正常！',
             }),
           )
           .timeout(const Duration(seconds: 10));
@@ -855,7 +855,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
             SnackBar(
               content: Text(result['success']
                   ? '測試簡訊已發送！訊息 ID: ${result['messageSid']}'
-                  : '❌ 簡訊發送失敗: ${result['error']}'),
+                  : '簡訊發送失敗: ${result['error']}'),
               backgroundColor: result['success'] ? Colors.green : Colors.red,
               duration: const Duration(seconds: 4),
             ),
@@ -889,51 +889,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
           if (_showTopNotification) _buildTopNotification(),
           if (_showCenterDialog) _buildCenterDialog(),
           // 新增：後端連線狀態指示器
-          _buildBackendStatusIndicator(),
         ],
-      ),
-    );
-  }
-
-  // 新增：後端連線狀態指示器
-  Widget _buildBackendStatusIndicator() {
-    return Positioned(
-      top: 100,
-      right: 10,
-      child: GestureDetector(
-        onTap: _checkBackendConnection, // 點擊重新檢查連線
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: _isBackendConnected
-                ? Colors.green.withValues(alpha: 0.15)
-                : Colors.red.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(15),
-            border: Border.all(
-              color: _isBackendConnected ? Colors.green : Colors.red,
-              width: 1.5,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                _isBackendConnected ? Icons.cloud_done : Icons.cloud_off,
-                color: _isBackendConnected ? Colors.green : Colors.red,
-                size: 16,
-              ),
-              const SizedBox(width: 5),
-              Text(
-                _isBackendConnected ? '後端連線' : '後端離線',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: _isBackendConnected ? Colors.green : Colors.red,
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -1002,10 +958,10 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
         //  新增：點擊手動充電
         onTap: () {
           if (_batteryLevel < 100) {
-            print('🔌 手動觸發充電');
+            print('手動觸發充電');
             _chargeBattery();
           } else {
-            print('🔋 電量已滿，無需充電');
+            print('電量已滿，無需充電');
           }
         },
         child: Container(
@@ -1051,7 +1007,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                   ],
                 ),
               Text(
-                isConnected ? '🔋 $_batteryLevel%' : '未連線',
+                isConnected ? '$_batteryLevel%' : '未連線',
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
@@ -1131,7 +1087,8 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     final bool isLoggedIn = userId.isNotEmpty;
     File? avatarFile;
     if (isLoggedIn) {
-      final avatarPath = '${Directory.current.path}\\database\\avatars\\$userId.png';
+      final avatarPath =
+          '${Directory.current.path}\\database\\avatars\\$userId.png';
       avatarFile = File(avatarPath);
       if (!avatarFile.existsSync()) avatarFile = null;
     }
@@ -1179,8 +1136,11 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                   child: CircleAvatar(
                     radius: 28,
                     backgroundColor: Colors.teal.shade100,
-                    backgroundImage: (avatarFile != null) ? FileImage(avatarFile) : null,
-                    child: (avatarFile == null) ? const Icon(Icons.person, size: 32, color: Colors.teal) : null,
+                    backgroundImage:
+                        (avatarFile != null) ? FileImage(avatarFile) : null,
+                    child: (avatarFile == null)
+                        ? const Icon(Icons.person, size: 32, color: Colors.teal)
+                        : null,
                   ),
                 ),
                 const SizedBox(width: 14),
@@ -1217,7 +1177,8 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                     } else {
                       final result = await Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => const LoginPage()),
+                        MaterialPageRoute(
+                            builder: (context) => const LoginPage()),
                       );
                       if (result != null && result is Map<String, dynamic>) {
                         setState(() {
@@ -1238,7 +1199,8 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 12, horizontal: 16),
                   ),
                 ),
               ],
@@ -1359,7 +1321,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
 
     if (_batteryLevel <= 20) {
       // 優先級1：低電量警告
-      targetMessage = '⚠️ 記得充電喔！電量剩餘 $_batteryLevel%';
+      targetMessage = '記得充電喔！電量剩餘 $_batteryLevel%';
       borderColor = const Color.fromARGB(255, 115, 229, 159);
       shadowColor =
           const Color.fromARGB(255, 59, 108, 75).withValues(alpha: 0.25);
@@ -1385,7 +1347,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
             ? (5 - timeSinceLastChange)
             : 5; // 如果超過 5 秒，重新等待 5 秒
 
-        print('⏳ 訊息切換延遲 $remainingTime 秒（強制 5 秒冷卻）');
+        print('訊息切換延遲 $remainingTime 秒（強制 5 秒冷卻）');
 
         Future.delayed(Duration(seconds: remainingTime), () {
           if (mounted && _fullMessage != targetMessage && !_isTyping) {
@@ -1478,9 +1440,8 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
 
     if (_isInDangerZone) {
       // 危險區域警告（優先級最高）
-      notificationMessage = _dangerZoneMessage.isNotEmpty
-          ? _dangerZoneMessage
-          : '⚠️ 您位於危險區域，請提高警覺！';
+      notificationMessage =
+          _dangerZoneMessage.isNotEmpty ? _dangerZoneMessage : '您位於危險區域，請提高警覺！';
       backgroundColor = Colors.red.shade50;
       borderColor = Colors.red.shade400;
       iconColor = Colors.red.shade700;
@@ -1835,7 +1796,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                     ),
                   ),
 
-                  // ✨ 右下角小精靈圖片
+                  // 右下角小精靈圖片
                   Positioned(
                     right: 20,
                     bottom: -15,
@@ -1878,7 +1839,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                     ),
                   ),
 
-                  // ✨ 裝飾小星星（左上角）
+                  // 裝飾小星星（左上角）
                   Positioned(
                     left: 25,
                     top: -8,
@@ -1890,7 +1851,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                     ),
                   ),
 
-                  // ✨ 裝飾小星星（右上角）
+                  // 裝飾小星星（右上角）
                   Positioned(
                     right: 25,
                     top: -5,

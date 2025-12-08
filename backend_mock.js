@@ -20,7 +20,6 @@ const client = twilio(accountSid, authToken);
 // 使用 body-parser 中介軟體來解析 JSON 請求體
 app.use(bodyParser.json());
 
-// 修改：增強 CORS 支援（允許所有來源和方法）
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*'); // 允許所有來源
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization'); // 允許的標頭
@@ -33,7 +32,7 @@ app.use((req, res, next) => {
   }
   
   // 記錄所有請求
-  console.log(`\n📡 收到請求: ${req.method} ${req.path}`);
+  console.log(`\n 收到請求: ${req.method} ${req.path}`);
   console.log(`   來源: ${req.get('origin') || '未知'}`);
   console.log(`   User-Agent: ${req.get('user-agent') || '未知'}`);
   
@@ -57,11 +56,11 @@ async function sendSmsNotification(customRecipient = null, messageBody, eventDat
   // 檢查簡訊長度（試用帳號前綴約 40 字元 + 訊息內容不可超過 120 字元）
   const maxLength = 120;
   if (messageBody.length > maxLength) {
-    console.log(`⚠️  警告: 簡訊內容過長 (${messageBody.length} 字元)，將截斷至 ${maxLength} 字元`);
+    console.log(` 警告: 簡訊內容過長 (${messageBody.length} 字元)，將截斷至 ${maxLength} 字元`);
     messageBody = messageBody.substring(0, maxLength);
   }
   
-  console.log(`\n--- 📱 發送簡訊 ---`);
+  console.log(`\n---  發送簡訊 ---`);
   console.log(`訊息內容: ${messageBody}`);
   console.log(`發送者: ${fromNumber}`);
   console.log(`接收者: ${recipient}`);
@@ -94,7 +93,7 @@ async function sendSmsNotification(customRecipient = null, messageBody, eventDat
     };
     
   } catch (error) {
-    console.error(`\n❌ 簡訊發送失敗:`);
+    console.error(`\n 簡訊發送失敗:`);
     console.error(`錯誤訊息: ${error.message}`);
     console.error(`錯誤代碼: ${error.code || 'N/A'}`);
     console.error(`------------------`);
@@ -174,7 +173,7 @@ app.post('/api/alert', async (req, res) => {
     // 儲存到記憶體資料庫
     mockDatabase.alerts.push(eventData);
 
-    console.log(`\n🚨 緊急警報觸發！`);
+    console.log(`\n 緊急警報觸發！`);
     console.log(`警報 ID: ${alertId}`);
     console.log(`用戶 ID: ${userId}`);
     console.log(`觸發類型: ${triggerType}`);
@@ -207,7 +206,7 @@ maps.google.com/?q=${latitude.toFixed(4)},${longitude.toFixed(4)}
         : `警報已記錄，但簡訊發送失敗: ${smsResult.error}`
     });
   } catch (error) {
-    console.error('❌ 寫入警報事件失敗:', error);
+    console.error(' 寫入警報事件失敗:', error);
     res.status(500).send({ success: false, message: '伺服器內部錯誤，無法記錄警報。' });
   }
 });
@@ -258,7 +257,7 @@ maps.google.com/?q=${alert.latitude.toFixed(4)},${alert.longitude.toFixed(4)}`;
     });
 
   } catch (error) {
-    console.error('❌ 取消警報失敗:', error);
+    console.error(' 取消警報失敗:', error);
     res.status(500).send({ success: false, message: '伺服器內部錯誤，無法取消警報。' });
   }
 });
@@ -274,7 +273,7 @@ app.post('/api/check-risk', (req, res) => {
   const timeHour = new Date().getHours();
   const riskCheck = aiRiskPrediction(latitude, longitude, timeHour);
 
-  console.log(`\n🔍 風險檢查`);
+  console.log(`\n 風險檢查`);
   console.log(`位置: ${latitude}, ${longitude}`);
   console.log(`風險分數: ${riskCheck.riskScore}/100`);
   console.log(`是否高風險: ${riskCheck.isHighRisk ? '是' : '否'}`);
@@ -301,12 +300,11 @@ app.post('/api/test-sms', async (req, res) => {
     });
   }
 
-  console.log(`\n🧪 測試簡訊發送`);
+  console.log(`\n 測試簡訊發送`);
   console.log(`訊息: ${messageBody}`);
   console.log(`接收者: ${recipient}`);
 
   try {
-    // 使用 testing.js 的方法
     const result = await client.messages.create({
       body: messageBody,
       from: fromNumber,
@@ -326,7 +324,7 @@ app.post('/api/test-sms', async (req, res) => {
       message: '測試簡訊已發送！'
     });
   } catch (error) {
-    console.error(`\n❌ 測試簡訊發送失敗:`);
+    console.error(`\n 測試簡訊發送失敗:`);
     console.error(`錯誤訊息: ${error.message}`);
     console.error(`錯誤代碼: ${error.code || 'N/A'}`);
 
@@ -356,7 +354,7 @@ app.post('/api/notify-family', async (req, res) => {
     longitude: longitude || null
   };
 
-  console.log(`\n💬 通知家人`);
+  console.log(`\n 通知家人`);
   console.log(`訊息: ${message}`);
   console.log(`用戶 ID: ${userId || '未提供'}`);
 
@@ -377,7 +375,7 @@ app.post('/api/notify-family', async (req, res) => {
         : `簡訊發送失敗: ${smsResult.error}`
     });
   } catch (error) {
-    console.error('❌ 通知家人失敗:', error);
+    console.error(' 通知家人失敗:', error);
     res.status(500).send({
       success: false,
       error: error.message,
@@ -388,7 +386,7 @@ app.post('/api/notify-family', async (req, res) => {
 
 // Endpoint 6: 查看所有警報
 app.get('/api/alerts', (req, res) => {
-  console.log(`\n📋 查詢所有警報 (共 ${mockDatabase.alerts.length} 筆)`);
+  console.log(`\n 查詢所有警報 (共 ${mockDatabase.alerts.length} 筆)`);
   
   res.status(200).send({
     success: true,
@@ -421,7 +419,7 @@ app.get('/', (req, res) => {
 
 // 新增：健康檢查端點
 app.get('/health', (req, res) => {
-  console.log(`\n💚 健康檢查請求`);
+  console.log(`\n 健康檢查請求`);
   res.json({ 
     status: 'healthy', 
     timestamp: new Date().toISOString(),
@@ -432,15 +430,15 @@ app.get('/health', (req, res) => {
 // 啟動伺服器
 app.listen(PORT, async () => {
   console.log(`\n==========================================`);
-  console.log(`🚀 SafeBuddy Mock 後端伺服器已啟動`);
+  console.log(` SafeBuddy Mock 後端伺服器已啟動`);
   console.log(`==========================================`);
-  console.log(`\n📍 伺服器位址: http://localhost:${PORT}`);
-  console.log(`📅 啟動時間: ${new Date().toLocaleString('zh-TW')}`);
+  console.log(`\n 伺服器位址: http://localhost:${PORT}`);
+  console.log(` 啟動時間: ${new Date().toLocaleString('zh-TW')}`);
   
   // 新增：顯示所有可用的網路位址
   const os = require('os');
   const interfaces = os.networkInterfaces();
-  console.log(`\n🌐 可用的網路位址:`);
+  console.log(`\n 可用的網路位址:`);
   console.log(`   http://localhost:${PORT}`);
   console.log(`   http://127.0.0.1:${PORT}`);
   
@@ -452,7 +450,7 @@ app.listen(PORT, async () => {
     });
   });
   
-  console.log(`\n📡 可用的 API 端點:`);
+  console.log(`\n 可用的 API 端點:`);
   console.log(`   GET    /                    - 伺服器狀態`);
   console.log(`   GET    /health              - 健康檢查`);
   console.log(`   POST   /api/alert           - 觸發緊急警報`);
@@ -462,11 +460,11 @@ app.listen(PORT, async () => {
   console.log(`   POST   /api/notify-family   - 通知家人`);
   console.log(`   GET    /api/alerts          - 查看所有警報`);
   
-  console.log(`\n--- 🔐 環境變數檢查 ---`);
+  console.log(`\n---  環境變數檢查 ---`);
   
   // 檢查憑證是否載入
   if (!accountSid || !authToken || !fromNumber || !toNumber) {
-    console.log(`❌ 錯誤：請確認 .env 檔案包含所有必要的 Twilio 憑證`);
+    console.log(` 錯誤：請確認 .env 檔案包含所有必要的 Twilio 憑證`);
     console.log(`需要的環境變數：`);
     console.log(`- TWILIO_ACCOUNT_SID`);
     console.log(`- TWILIO_AUTH_TOKEN`);
@@ -478,7 +476,7 @@ app.listen(PORT, async () => {
     console.log(`Twilio Phone Number: ${fromNumber}`);
     console.log(`Recipient Phone Number (家人): ${toNumber}`);
     
-    console.log(`\n🔍 測試 Twilio 連線...`);
+    console.log(`\n 測試 Twilio 連線...`);
     
     try {
       // 測試 API 連線（不發送簡訊）
@@ -490,7 +488,7 @@ app.listen(PORT, async () => {
       console.log(`   帳號類型: ${account.type}`);
       
     } catch (error) {
-      console.error(`\n❌ Twilio 連線失敗:`);
+      console.error(`\n Twilio 連線失敗:`);
       console.error(`   錯誤: ${error.message}`);
       console.error(`   錯誤代碼: ${error.code || 'N/A'}`);
     }
@@ -500,7 +498,7 @@ app.listen(PORT, async () => {
   console.log(`==========================================\n`);
   
   // 新增：提示 Flutter 連線測試命令
-  console.log(`💡 Flutter 連線測試命令 (在 Flutter Debug Console):`);
+  console.log(` Flutter 連線測試命令 (在 Flutter Debug Console):`);
   console.log(`   final response = await http.get(Uri.parse('http://localhost:3000/'));`);
   console.log(`   print(response.body);`);
   console.log(`\n`);

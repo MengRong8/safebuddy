@@ -3,7 +3,7 @@ import time
 
 # --- CONFIGURATION ---
 # CHANGE THIS to the Bluetooth COM port 
-SERIAL_PORT = 'COM8' 
+SERIAL_PORT = 'COM6' 
 BAUD_RATE = 9600
 # ---------------------
 

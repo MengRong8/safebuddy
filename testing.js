@@ -10,7 +10,7 @@ const toNumber = process.env.RECIPIENT_PHONE_NUMBER;
 
 // 檢查憑證
 if (!accountSid || !authToken || !fromNumber || !toNumber) {
-  console.error("❌ 錯誤：請確認 .env 檔案包含所有必要的 Twilio 憑證");
+  console.error(" 錯誤：請確認 .env 檔案包含所有必要的 Twilio 憑證");
   process.exit(1);
 }
 
@@ -34,7 +34,7 @@ async function sendTestMessage(customMessage = null, customRecipient = null) {
   // 檢查訊息長度（試用帳號限制）
   const maxLength = 120;
   if (messageBody.length > maxLength) {
-    console.warn(`⚠️  警告：訊息長度 (${messageBody.length}) 超過建議長度 (${maxLength})`);
+    console.warn(`  警告：訊息長度 (${messageBody.length}) 超過建議長度 (${maxLength})`);
   }
   
   try {
@@ -54,7 +54,7 @@ async function sendTestMessage(customMessage = null, customRecipient = null) {
     return { success: true, messageSid: message.sid };
     
   } catch (error) {
-    console.error(`\n❌ 簡訊發送失敗:`);
+    console.error(`\n 簡訊發送失敗:`);
     console.error(`錯誤訊息: ${error.message}`);
     console.error(`錯誤代碼: ${error.code || 'N/A'}`);
     console.error(`更多資訊: ${error.moreInfo || 'N/A'}`);
