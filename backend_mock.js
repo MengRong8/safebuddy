@@ -179,10 +179,10 @@ app.post('/api/alert', async (req, res) => {
     console.log(`觸發類型: ${triggerType}`);
     console.log(`風險分數: ${riskCheck.riskScore}/100`);
 
-    // 簡訊內容縮短至 80 字元以內（試用帳號限制）
     const smsMessage = `緊急!${triggerType}警報
-maps.google.com/?q=${latitude.toFixed(4)},${longitude.toFixed(4)}
-風險${riskCheck.riskScore} 請聯繫`;
+                    使用者當前位置 : maps.google.com/?q=${latitude.toFixed(4)},${longitude.toFixed(4)}
+                    請盡速與使用者聯繫
+                    -- SafeBuddy`;
 
     const smsResult = await sendSmsNotification(
       contactNumber,
@@ -220,45 +220,47 @@ app.post('/api/cancel', async (req, res) => {
   }
 
   try {
-    const alert = mockDatabase.alerts.find(a => a.alertId === alertId);
+    console.log(`\n=== 警報取消 ===`);
+    console.log(`   警報 ID: ${alertId}`);
+    console.log(`   取消時間: ${new Date().toISOString()}`);
 
-    if (!alert) {
-      return res.status(404).send({ success: false, message: '找不到對應的警報事件。' });
-    }
+    // 簡化版簡訊內容（不需要 alert 物件）
+    const safeMessage = `平安！警報為誤觸
+用戶已回報平安。
+時間: ${new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}
+-- SafeBuddy`;
 
-    if (alert.isCancelled) {
-      return res.status(200).send({ success: true, message: '警報已於稍早取消。' });
-    }
-
-    // 更新狀態
-    alert.isCancelled = true;
-    alert.cancellationTime = new Date().toISOString();
-    alert.status = 'CANCELLED_SAFE';
-
-    console.log(`\n警報取消: ${alertId}`);
-    console.log(`用戶 ID: ${alert.userId}`);
-    console.log(`取消時間: ${alert.cancellationTime}`);
-
-    // 簡訊內容縮短至 50 字元以內
-    const safeMessage = `平安!警報解除
-maps.google.com/?q=${alert.latitude.toFixed(4)},${alert.longitude.toFixed(4)}`;
-
+    // 直接使用 toNumber（從 .env 讀取）
     const smsResult = await sendSmsNotification(
-      alert.contactNumber,
-      safeMessage, 
-      alert
+      null,          // 使用預設的 toNumber
+      safeMessage,   // 簡訊內容
+      { alertId }    // 事件資料
     );
 
+    console.log(`\n 簡訊發送結果:`);
+    console.log(`   成功: ${smsResult.success}`);
+    console.log(`   接收者: ${smsResult.to || toNumber}`);
+
+    // 回傳結果給 Flutter
     res.status(200).send({ 
       success: true, 
       message: '警報已成功取消並回報平安。',
       smsDelivered: smsResult.success,
-      recipientNumber: smsResult.to || toNumber
+      messageSid: smsResult.messageSid || null,
+      recipientNumber: smsResult.to || toNumber,
+      alertId: alertId
     });
 
   } catch (error) {
-    console.error(' 取消警報失敗:', error);
-    res.status(500).send({ success: false, message: '伺服器內部錯誤，無法取消警報。' });
+    console.error('\n 取消警報失敗:', error);
+    console.error('   錯誤訊息:', error.message);
+    console.error('   錯誤堆疊:', error.stack);
+    
+    res.status(500).send({ 
+      success: false, 
+      message: '伺服器內部錯誤，無法取消警報。',
+      error: error.message
+    });
   }
 });
 

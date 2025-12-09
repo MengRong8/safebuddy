@@ -255,9 +255,6 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
         print('   Twilio 已設定: ${status.twilioConfigured}');
         print('   家人號碼已設定: ${status.recipientConfigured}');
         print('   警報數量: ${status.alertsCount}');
-
-        // 顯示連線成功訊息
-        // _startTypingEffect(' 後端連線成功！系統已就緒。');
       } else {
         throw Exception('後端回應錯誤: ${response.statusCode}');
       }
@@ -268,9 +265,6 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
       });
 
       print(' 後端連線失敗: $e');
-
-      // 顯示連線失敗警告
-      // _startTypingEffect('後端未連線！請先啟動 backend_mock.js');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -295,7 +289,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
 
   // 新增：定期檢查後端健康狀態
   void _startBackendHealthCheck() {
-    _backendHealthCheck = Timer.periodic(const Duration(seconds: 30), (timer) {
+    _backendHealthCheck = Timer.periodic(const Duration(seconds: 120), (timer) {
       _checkBackendConnection();
     });
   }
@@ -696,7 +690,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     }
   }
 
-  // 新增：電量模擬器（每 10 秒降低 1%，降到 0% 後自動恢復到 100%）
+  // 電量模擬器（每 10 秒降低 1%，降到 0% 後自動恢復到 100%）
   void _startBatterySimulator() {
     _batterySimulator = Timer.periodic(const Duration(seconds: 10), (timer) {
       setState(() {

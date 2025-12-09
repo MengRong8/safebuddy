@@ -43,7 +43,6 @@ class _MapPageState extends State<MapPage> {
     _loadHotZoneData();
   }
 
-  // 修改：檢查是否在危險區域內（支援多個多邊形）
   bool _isInDangerZone() {
     // 檢查犯罪熱點（每 4 個點組成一個多邊形）
     if (_showCrimeZones && _crimePolygons.isNotEmpty) {
@@ -92,7 +91,6 @@ class _MapPageState extends State<MapPage> {
     return false;
   }
 
-  // 修改：取得危險區域訊息（支援多個多邊形）
   String _getDangerZoneMessage() {
     List<String> dangers = [];
 
@@ -160,7 +158,7 @@ class _MapPageState extends State<MapPage> {
     return message;
   }
 
-  //  新增：判斷點是否在多邊形內（射線法）
+  // 判斷是否在多邊形內
   bool _isPointInPolygon(LatLng point, List<LatLng> polygon) {
     if (polygon.length < 3) return false;
 
@@ -183,7 +181,7 @@ class _MapPageState extends State<MapPage> {
     return inside;
   }
 
-  //  新增：計算兩點距離（公尺）
+  //計算兩點距離
   double _calculateDistance(LatLng point1, LatLng point2) {
     const Distance distance = Distance();
     return distance.as(LengthUnit.Meter, point1, point2);
@@ -243,7 +241,7 @@ class _MapPageState extends State<MapPage> {
       });
       print('危險路口載入成功: ${intersectionPoints.length} 個點');
     } catch (e, stackTrace) {
-      print('❌ 熱點資料載入失敗: $e');
+      print(' 熱點資料載入失敗: $e');
       print('堆疊追蹤: $stackTrace');
     }
   }
@@ -256,7 +254,6 @@ class _MapPageState extends State<MapPage> {
       if (_lastAlertPosition == null ||
           _calculateDistance(_currentPosition, _lastAlertPosition!) >
               _alertDistanceThreshold) {
-
         String category = '';
         if (_showCrimeZones) {
           for (int i = 0; i < _crimePolygons.length; i += 4) {
@@ -310,14 +307,13 @@ class _MapPageState extends State<MapPage> {
           };
           await DatabaseHelper.instance.insertAlert(alert);
           _lastAlertPosition = _currentPosition;
-          print('⚠️ 新增 alert: $category at $_currentPosition');
+          print('新增 alert: $category at $_currentPosition');
         }
       }
     }
   }
 
-
-  //  修改：返回時傳遞位置資料
+  //  返回時傳遞位置資料
   void _goBack() {
     Navigator.pop(context, {
       'position': _currentPosition, //  傳回當前位置
@@ -352,7 +348,7 @@ class _MapPageState extends State<MapPage> {
                   _currentPosition = point;
                 });
                 _checkAndInsertAlert(widget.userId);
-                print('📍 位置已更新: ${point.latitude}, ${point.longitude}');
+                print(' 位置已更新: ${point.latitude}, ${point.longitude}');
               },
             ),
             children: [
@@ -361,13 +357,13 @@ class _MapPageState extends State<MapPage> {
                 userAgentPackageName: 'com.example.safebuddy',
               ),
 
-              // 犯罪熱點（紅色多邊形）- 修改為多個多邊形
+              // 犯罪熱點（紅色多邊形
               if (_showCrimeZones && _crimePolygons.isNotEmpty)
                 PolygonLayer(
                   polygons: _buildCrimePolygons(),
                 ),
 
-              // 事故熱點（橙色多邊形）- 修改為多個多邊形
+              // 事故熱點（橙色多邊形
               if (_showAccidentZones && _accidentPolygons.isNotEmpty)
                 PolygonLayer(
                   polygons: _buildAccidentPolygons(),
@@ -552,9 +548,7 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
-  //  新增：建立犯罪熱點多邊形列表
   List<Polygon> _buildCrimePolygons() {
-    // 假設每 4 個點組成一個多邊形
     List<Polygon> polygons = [];
 
     for (int i = 0; i < _crimePolygons.length; i += 4) {
@@ -579,7 +573,7 @@ class _MapPageState extends State<MapPage> {
     return polygons;
   }
 
-  //  新增：建立事故區域多邊形列表
+  // 建立事故區域多邊形列表
   List<Polygon> _buildAccidentPolygons() {
     // 假設每 4 個點組成一個多邊形
     List<Polygon> polygons = [];
