@@ -130,6 +130,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     with TickerProviderStateMixin {
   String _bleStatus = '已連線';
   bool _isAlerting = false;
+  bool _isBleConnected = false;
   int _countdown = 10;
   String? _currentAlertId;
   String _riskMessage = '';
@@ -143,7 +144,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
   bool _isInDangerZone = false;
   String _dangerZoneMessage = '';
 
-  // 新增：後端連線狀態
+  // 後端連線狀態
   bool _isBackendConnected = false;
   BackendStatus? _backendStatus;
 
@@ -173,10 +174,9 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
   void initState() {
     super.initState();
 
-    // 新增：啟動時檢查後端連線
+    // 啟動時檢查後端連線
     _checkBackendConnection();
 
-    // 新增：每 30 秒檢查一次後端狀態
     _startBackendHealthCheck();
 
     final now = DateTime.now();
@@ -218,8 +218,6 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
       parent: _dialogController!,
       curve: Curves.easeIn,
     ));
-
-    _startTypingEffect('您好！我是 SafeBuddy 小精靈。點擊左側按鈕檢查周邊風險。');
   }
 
   @override
@@ -287,14 +285,14 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     }
   }
 
-  // 新增：定期檢查後端健康狀態
+  // 定期檢查後端連線
   void _startBackendHealthCheck() {
     _backendHealthCheck = Timer.periodic(const Duration(seconds: 120), (timer) {
       _checkBackendConnection();
     });
   }
 
-  // 新增：通知家人（自訂訊息）
+  // 通知家人（自訂訊息）
   Future<void> _notifyFamily(String message) async {
     if (!_isBackendConnected) {
       _showBackendNotConnectedError();
@@ -356,7 +354,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     }
   }
 
-  // 新增：查看所有警報
+  // 查看所有警報
   Future<void> _viewAllAlerts() async {
     try {
       // 從資料庫抓取所有 alert
@@ -364,7 +362,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
 
       final alertsCount = alerts.length;
 
-      print('📋 警報總數: $alertsCount');
+      print(' 警報總數: $alertsCount');
       for (var alert in alerts) {
         print(
             '   - ${alert['id']}: ${alert['category']} at ${alert['time']} (${alert['area']})');
@@ -448,7 +446,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     }
   }
 
-  // 新增：顯示後端未連線錯誤
+  //顯示後端未連線錯誤
   void _showBackendNotConnectedError() {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -470,7 +468,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     }
   }
 
-  // 新增：顯示 API 錯誤
+  //顯示 API 錯誤
   void _showApiError(String title, String error) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -690,42 +688,33 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     }
   }
 
-  // 電量模擬器（每 10 秒降低 1%，降到 0% 後自動恢復到 100%）
+// 電量模擬器（每 10 秒降低 1%）
   void _startBatterySimulator() {
     _batterySimulator = Timer.periodic(const Duration(seconds: 10), (timer) {
       setState(() {
         if (_batteryLevel > 0) {
-          _batteryLevel--;
-
-          // 當電量低於 20% 且尚未提示時，顯示充電提示
-          if (_batteryLevel <= 20 && !_hasShownLowBatteryWarning) {
-            _showLowBatteryWarning();
-            _hasShownLowBatteryWarning = true;
-          }
-
-          // 當電量回到 21% 以上，重置提示標記
-          if (_batteryLevel > 20) {
-            _hasShownLowBatteryWarning = false;
-          }
-        } else {
-          //  電量降到 0% 時，自動充電到 100%
-          print('電量耗盡，自動充電中...');
-          _chargeBattery();
+          _batteryLevel -= 1; // 每 10 秒降低 1%
         }
       });
+
+      // 每次電量變化後檢查是否需要顯示警告
+      _showLowBatteryWarning();
     });
   }
 
-  // 新增：充電動畫（模擬從 0% 充到 100%）
-  void _chargeBattery() {
+// 充電動畫（模擬從當前電量充到 100%）
+  Future<void> _chargeBattery() async {
+    print(' === 開始充電流程 ===');
+    print('   當前電量: $_batteryLevel%');
+
+    // 如果電量已滿，不需要充電
+    if (_batteryLevel >= 100) {
+      print('   電量已滿，無需充電');
+      return;
+    }
+
     // 暫停電量消耗
     _batterySimulator?.cancel();
-
-    // 顯示充電訊息
-    setState(() {
-      _riskMessage = ' 電量耗盡，正在快速充電中...';
-    });
-    _startTypingEffect(' 電量耗盡，正在快速充電中...');
 
     // 快速充電動畫（每 0.1 秒增加 10%）
     Timer.periodic(const Duration(milliseconds: 100), (chargeTimer) {
@@ -736,19 +725,21 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
         } else {
           // 充電完成
           chargeTimer.cancel();
-          print('充電完成！電量恢復到 100%');
+
+          print(' 充電完成：電量 = $_batteryLevel%');
 
           // 顯示充電完成訊息
-          _riskMessage = '充電完成！電量已恢復到 100%';
-          _startTypingEffect('充電完成！電量已恢復到 100%');
+          _riskMessage = ' 充電完成！電量已恢復到 100%';
+          _startTypingEffect(' 充電完成！電量已恢復到 100%');
           _hasShownLowBatteryWarning = false;
 
-          // 3 秒後清除訊息並重新開始消耗
-          Future.delayed(const Duration(seconds: 3), () {
+          //  3 秒後清除訊息，然後延遲 5 秒再顯示預設訊息
+          Future.delayed(const Duration(seconds: 5), () {
             setState(() {
               _riskMessage = '';
             });
-            _startTypingEffect('您好！我是你的專屬 SafeBuddy 小精靈。');
+
+            print(' 延遲 5 秒後顯示預設訊息');
 
             // 重新啟動電量消耗
             _startBatterySimulator();
@@ -758,26 +749,35 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     });
   }
 
-  // 新增：顯示低電量警告
+// 顯示低電量警告// 在 State 類別中加入這個變數（與其他變數一起）
+  Set<int> _shownBatteryWarnings = {}; // 記錄已顯示警告的電量等級
+
+// 顯示低電量警告（每 10% 跳一次，從 50% 開始）
   void _showLowBatteryWarning() {
-    setState(() {
-      _riskMessage = '記得充電喔！電量剩餘 $_batteryLevel%';
-    });
+    // 定義需要顯示警告的電量等級
+    const warningLevels = [50, 40, 30, 20, 10, 0];
 
-    //  啟動打字機效果
-    _startTypingEffect('記得充電喔！電量剩餘 $_batteryLevel%');
+    // 如果當前電量不在警告範圍，跳過
+    if (!warningLevels.contains(_batteryLevel)) {
+      return;
+    }
 
-    // 可選：發出聲音或震動提示
-    print('低電量警告：電量剩餘 $_batteryLevel%');
+    // 如果已經顯示過，跳過
+    if (_shownBatteryWarnings.contains(_batteryLevel)) {
+      return;
+    }
+
+    // 記錄已顯示的電量等級
+    _shownBatteryWarnings.add(_batteryLevel);
+
+    print(' 電量警告: $_batteryLevel%');
+
+    // 觸發 UI 更新（讓 _buildSafeBuddyDialog 重新檢查訊息）
+    setState(() {});
   }
 
-  //  新增：打字機效果方法
+// 打字機效果方法
   void _startTypingEffect(String message) {
-    // 如果訊息相同，不重複打字
-    // if (_fullMessage == message && !_isTyping) {
-    //   return;
-    // }
-
     // 取消舊的打字動畫
     _typingTimer?.cancel();
 
@@ -790,7 +790,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
 
     // 開始打字動畫（每 50 毫秒顯示一個字元）
     _typingTimer = Timer.periodic(
-      const Duration(milliseconds: 50), //  打字速度（可調整）
+      const Duration(milliseconds: 50),
       (timer) {
         if (_charIndex < _fullMessage.length) {
           setState(() {
@@ -859,7 +859,10 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     _bleSimulator = Timer.periodic(const Duration(seconds: 30), (timer) {
       setState(() {
         _bleStatus = (_bleStatus == '已連線') ? '未連線' : '已連線';
+        _isBleConnected = (_bleStatus == '已連線');
       });
+
+      print('藍芽狀態: $_bleStatus (連線: $_isBleConnected)');
     });
   }
 
@@ -882,12 +885,12 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     );
   }
 
-  // 背景地圖
+  // 背景圖
   Widget _buildMapBackground() {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // 背景 GIF（自動播放）
+        // 背景 GIF
         Image.asset(
           'assets/image/background.gif',
           fit: BoxFit.cover,
@@ -943,7 +946,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
       top: 140,
       right: 10,
       child: GestureDetector(
-        //  新增：點擊手動充電
+        //  點擊手動充電
         onTap: () {
           if (_batteryLevel < 100) {
             print(' 手動觸發充電');
@@ -981,7 +984,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                 size: 18,
               ),
               const SizedBox(width: 6),
-              //  新增：充電中顯示閃電圖示
+              //  充電中顯示閃電圖示
               if (_batteryLevel == 0 ||
                   _batterySimulator?.isActive == false && _batteryLevel < 100)
                 Row(
@@ -1206,7 +1209,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                         builder: (context) {
                           final controller = TextEditingController();
                           return AlertDialog(
-                            title: const Text('通知家人'),
+                            title: const Text('聯絡家人'),
                             content: TextField(
                               controller: controller,
                               decoration: const InputDecoration(
@@ -1234,7 +1237,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                       );
                     },
                     icon: const Icon(Icons.message, size: 16),
-                    label: const Text('通知家人', style: TextStyle(fontSize: 12)),
+                    label: const Text('聯絡家人', style: TextStyle(fontSize: 12)),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.teal,
                       side: BorderSide(color: Colors.teal.shade300),
@@ -1301,66 +1304,76 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     );
   }
 
-  //  對話框（只顯示電量和打招呼訊息）
+// 對話框（顯示電量警告 + 打招呼訊息）
   Widget _buildSafeBuddyDialog() {
-    //  決定要顯示的訊息類型（不包含危險提示）
     String targetMessage;
     Color borderColor;
     Color shadowColor;
     Color textColor;
-
-    if (_batteryLevel <= 20) {
-      // 優先級1：低電量警告
-      targetMessage = '記得充電喔！電量剩餘 $_batteryLevel%';
-      borderColor = const Color.fromARGB(255, 115, 229, 159);
-      shadowColor =
-          const Color.fromARGB(255, 59, 108, 75).withValues(alpha: 0.25);
-      textColor = const Color.fromARGB(255, 38, 119, 88);
-    } else {
-      // 優先級2：預設打招呼訊息
-      targetMessage = '您好！我是你的專屬 SafeBuddy 小精靈。';
-      borderColor = Colors.teal.shade300;
-      shadowColor = Colors.teal.withValues(alpha: 0.2);
-      textColor = Colors.grey.shade800;
+    FontWeight fontWeight;
+    borderColor = Colors.green.shade400;
+    shadowColor = Colors.green.withValues(alpha: 0.00000001);
+    textColor = Colors.green.shade900;
+    fontWeight = FontWeight.w700;
+    //  充電中訊息
+    if (_riskMessage.contains('充電中')) {
+      targetMessage = ' 正在快速充電中...';
+    } else if (_riskMessage.contains('充電完成')) {
+      targetMessage = ' 充電完成！電量已恢復到 100%';
+    } else if (!_isBleConnected) {
+      targetMessage = ' 注意！藍芽未連接，請確認小物是否在身邊！';
+    } else if (_batteryLevel == 50) {
+      targetMessage = ' 嘿！電量只剩一半囉～快去充電吧！';
+    } else if (_batteryLevel == 40) {
+      targetMessage = ' 哎呀！剩下 40% 電量了，記得找地方充電喔～';
+    } else if (_batteryLevel == 30) {
+      targetMessage = ' 救命啊！電量只剩 30% 了，我快撐不住啦～';
+    } else if (_batteryLevel == 20) {
+      targetMessage = ' 電量剩餘 20%！再不充電我就要說再見了！';
+    } else if (_batteryLevel == 10) {
+      targetMessage = ' 完蛋了！只剩 10% 了，我快要變成小天使了...！';
+    } else if (_batteryLevel == 0) {
+      targetMessage = ' 電量耗盡！裝置即將關機...';
     }
 
-    //  當訊息變更時，強制等待 3 秒
+    // 預設打招呼訊息
+    else {
+      targetMessage = '嗨嗨～我是 SafeBuddy 你的專屬小精靈！有什麼我能幫忙的嗎？';
+    }
+
+    // 統一的訊息切換邏輯（只在這裡觸發打字效果）
     if (_fullMessage != targetMessage && !_isTyping) {
       final now = DateTime.now();
 
       if (_lastMessageChangeTime != null) {
         final timeSinceLastChange =
             now.difference(_lastMessageChangeTime!).inSeconds;
+        final remainingTime =
+            (timeSinceLastChange < 5) ? (5 - timeSinceLastChange) : 0;
 
-        //  不論何時都等待剩餘時間
-        final remainingTime = (timeSinceLastChange < 5)
-            ? (5 - timeSinceLastChange)
-            : 5; // 如果超過 5 秒，重新等待 5 秒
-
-        print(' 訊息切換延遲 $remainingTime 秒（強制 5 秒冷卻）');
-
-        Future.delayed(Duration(seconds: remainingTime), () {
-          if (mounted && _fullMessage != targetMessage && !_isTyping) {
-            print('延遲後切換訊息: $targetMessage');
-            setState(() {
-              _lastMessageChangeTime = DateTime.now();
-            });
-            _startTypingEffect(targetMessage);
-          }
-        });
-      } else {
-        //  首次顯示也等待 3 秒（可選：如果希望首次立即顯示，改為 0）
-        print(' 首次顯示訊息（等待 3 秒）: $targetMessage');
-        Future.delayed(const Duration(seconds: 3), () {
-          if (mounted && _fullMessage != targetMessage && !_isTyping) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (remainingTime > 0) {
+          // 延遲切換（確保間隔 5 秒）
+          Future.delayed(Duration(seconds: remainingTime), () {
+            if (mounted && _fullMessage != targetMessage && !_isTyping) {
               setState(() {
                 _lastMessageChangeTime = DateTime.now();
               });
               _startTypingEffect(targetMessage);
-            });
-          }
+            }
+          });
+        } else {
+          // 立即切換（已經超過 5 秒）
+          setState(() {
+            _lastMessageChangeTime = DateTime.now();
+          });
+          _startTypingEffect(targetMessage);
+        }
+      } else {
+        // 首次顯示，立即切換
+        setState(() {
+          _lastMessageChangeTime = DateTime.now();
         });
+        _startTypingEffect(targetMessage);
       }
     }
 
@@ -1372,7 +1385,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
         height: 110,
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.8),
+          color: Colors.white.withValues(alpha: 0.9),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
             color: borderColor,
@@ -1399,9 +1412,8 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                       fontSize: 12,
                       color: textColor,
                       height: 1.4,
-                      fontWeight: _batteryLevel <= 20
-                          ? FontWeight.bold
-                          : FontWeight.w500,
+                      fontWeight: fontWeight,
+                      letterSpacing: 0.3,
                     ),
                   ),
                 ),
@@ -1429,7 +1441,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     IconData iconData;
 
     if (_isInDangerZone) {
-      // 危險區域警告（優先級最高）
+      // 危險區域警告
       notificationMessage =
           _dangerZoneMessage.isNotEmpty ? _dangerZoneMessage : '您位於危險區域，請提高警覺！';
       backgroundColor = Colors.red.shade50;
@@ -1459,7 +1471,6 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
         iconData = Icons.info_outline;
       }
     } else {
-      // 預設訊息（不應該顯示，但作為安全後備）
       notificationMessage = '目前位置安全';
       backgroundColor = Colors.green.shade50;
       borderColor = Colors.green.shade300;
