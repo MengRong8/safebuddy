@@ -17,6 +17,7 @@ import 'editUser_page.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'database/database_helper.dart';
 import 'package:intl/intl.dart';
+import 'package:lottie/lottie.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -139,6 +140,8 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
   bool _isLoading = false;
   int _batteryLevel = 85;
   bool _hasShownLowBatteryWarning = false;
+  int _currentDefaultMessageIndex = 0;
+  bool _showGreetingMessage = false; //
 
   LatLng _currentPosition = const LatLng(mockLatitude, mockLongitude);
   bool _isInDangerZone = false;
@@ -158,6 +161,8 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
   AnimationController? _dialogController;
   Animation<double>? _scaleAnimation;
   Animation<double>? _opacityAnimation;
+  AnimationController? _floatingController;
+  Animation<double>? _floatingAnimation;
 
   String _displayedMessage = '';
   String _fullMessage = '';
@@ -173,7 +178,18 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
   @override
   void initState() {
     super.initState();
+    _floatingController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2000), // 2秒完成一次上下飄動
+    )..repeat(reverse: true); // 重複播放，來回飄動
 
+    _floatingAnimation = Tween<double>(
+      begin: -10.0,
+      end: 10.0,
+    ).animate(CurvedAnimation(
+      parent: _floatingController!,
+      curve: Curves.easeInOut, // 平滑的飄動效果
+    ));
     // 啟動時檢查後端連線
     _checkBackendConnection();
 
@@ -229,7 +245,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     _slideController?.dispose();
     _dialogController?.dispose();
     _typingTimer?.cancel();
-
+    _floatingController?.dispose();
     super.dispose();
   }
 
@@ -1272,18 +1288,73 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     );
   }
 
-  // 小精靈角色
+// 小精靈角色
   Widget _buildSafeBuddyCharacter() {
+    String fairyImage;
+    double imageScale;
+
+    if (_fullMessage.contains('嗨嗨～我是 SafeBuddy') ||
+        _fullMessage.contains('有什麼我能幫忙的嗎')) {
+      fairyImage = 'assets/image/fairy_handshake.png';
+      imageScale = 1.15; // 握手圖片放大 1.5 倍
+    } else if (_fullMessage.contains('充電中') ||
+        _fullMessage.contains('正在快速充電')) {
+      fairyImage = 'assets/image/fairy_charging.png';
+      imageScale = 1.1; // 其他圖片保持原大小
+    } else if (_fullMessage.contains('充電完成')) {
+      fairyImage = 'assets/image/fairy_charging.png';
+      imageScale = 1.05;
+    } else if (_fullMessage.contains('藍芽未連接')) {
+      fairyImage = 'assets/image/fairy_no_conn.png';
+      imageScale = 1.1;
+    } else {
+      fairyImage = 'assets/image/fairy_map.png';
+      imageScale = 1.1;
+    }
     return Positioned(
       left: 0,
       right: 0,
       top: 460,
       child: Center(
+        // 加入 Null 檢查：如果動畫未初始化，直接顯示內容
+        child: _floatingAnimation != null
+            ? AnimatedBuilder(
+                animation: _floatingAnimation!,
+                builder: (context, child) {
+                  return Transform.translate(
+                    offset: Offset(0, _floatingAnimation!.value),
+                    child: child,
+                  );
+                },
+                child: _buildFairyContent(fairyImage, imageScale),
+              )
+            : _buildFairyContent(fairyImage, imageScale), // 備用方案
+      ),
+    );
+  }
+
+  Widget _buildFairyContent(String fairyImage, double imageScale) {
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _showGreetingMessage = true;
+        });
+
+        Future.delayed(const Duration(seconds: 10), () {
+          if (mounted) {
+            setState(() {
+              _showGreetingMessage = false;
+            });
+          }
+        });
+      },
+      child: Transform.scale(
+        scale: imageScale,
         child: SizedBox(
           width: 300,
           height: 300,
           child: Image.asset(
-            'assets/image/fairy_map.gif',
+            fairyImage,
             fit: BoxFit.contain,
             errorBuilder: (context, error, stackTrace) {
               return Image.asset(
@@ -1316,12 +1387,12 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     textColor = Colors.green.shade900;
     fontWeight = FontWeight.w700;
     //  充電中訊息
-    if (_riskMessage.contains('充電中')) {
-      targetMessage = ' 正在快速充電中...';
+
+    if (_showGreetingMessage) {
+      // 點擊小精靈時顯示打招呼
+      targetMessage = '嗨嗨～我是 SafeBuddy 你的專屬小精靈！有什麼我能幫忙的嗎？';
     } else if (_riskMessage.contains('充電完成')) {
       targetMessage = ' 充電完成！電量已恢復到 100%';
-    } else if (!_isBleConnected) {
-      targetMessage = ' 注意！藍芽未連接，請確認小物是否在身邊！';
     } else if (_batteryLevel == 50) {
       targetMessage = ' 嘿！電量只剩一半囉～快去充電吧！';
     } else if (_batteryLevel == 40) {
@@ -1334,11 +1405,11 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
       targetMessage = ' 完蛋了！只剩 10% 了，我快要變成小天使了...！';
     } else if (_batteryLevel == 0) {
       targetMessage = ' 電量耗盡！裝置即將關機...';
-    }
-
-    // 預設打招呼訊息
-    else {
-      targetMessage = '嗨嗨～我是 SafeBuddy 你的專屬小精靈！有什麼我能幫忙的嗎？';
+    } else if (!_isBleConnected) {
+      targetMessage = ' 注意！藍芽未連接，請確認小物是否在身邊！';
+    } else {
+      // 其他時間顯示地圖提示
+      targetMessage = '點擊左邊按鈕查看地圖及周邊風險區域喔！';
     }
 
     // 統一的訊息切換邏輯（只在這裡觸發打字效果）
