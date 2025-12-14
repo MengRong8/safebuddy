@@ -208,7 +208,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     if (now.hour >= 22 || now.hour < 6) {
       _checkRiskArea();
     }
-    _startBleSimulator();
+    //_startBleSimulator();
     _startBatterySimulator();
     
     if (Platform.isWindows) {
@@ -844,7 +844,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
   }
 
   // --- 前端邏輯 ---
-  void _simulateAlert() {
+  void _isAlert() {
     if (_isAlerting) return;
 
     // 檢查後端連線
@@ -890,22 +890,29 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     });
   }
 
-  void _startBleSimulator() {
-    _bleSimulator = Timer.periodic(const Duration(seconds: 30), (timer) {
-      setState(() {
-        _bleStatus = (_bleStatus == '已連線') ? '未連線' : '已連線';
-        _isBleConnected = (_bleStatus == '已連線');
-      });
+  // void _startBleSimulator() {
+  //   _bleSimulator = Timer.periodic(const Duration(seconds: 30), (timer) {
+  //     setState(() {
+  //       _bleStatus = (_bleStatus == '已連線') ? '未連線' : '已連線';
+  //       _isBleConnected = (_bleStatus == '已連線');
+  //     });
 
-      print('藍芽狀態: $_bleStatus (連線: $_isBleConnected)');
-    });
-  }
+  //     print('藍芽狀態: $_bleStatus (連線: $_isBleConnected)');
+  //   });
+  // }
 
   void _startSerialListener() {
     // 只有在 _serialService 存在 (即 Windows 平台) 時才執行
     if (_serialService == null) return; 
 
     if (_serialService!.startListening()) {
+      if (mounted) {
+            setState(() {
+                _isBleConnected = true;
+                _bleStatus = '已連線';
+            });
+            
+        }
         // 訂閱數據流
         _serialService!.dataStream.listen((line) {
             print('Serial Port Received: $line');
@@ -918,7 +925,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                 if (mounted) {
                     // 確保我們不是在警報倒數中再次觸發
                     if (!_isAlerting) {
-                      _simulateAlert(); 
+                      _isAlert(); 
                     }
                 }
             }
@@ -1137,7 +1144,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
           const SizedBox(height: 12),
           FloatingActionButton(
             heroTag: 'alert',
-            onPressed: _simulateAlert,
+            onPressed: _isAlert,
             backgroundColor: Colors.red.shade500,
             child: const Icon(Icons.warning_amber_rounded, color: Colors.white),
           ),
