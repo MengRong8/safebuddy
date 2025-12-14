@@ -19,6 +19,8 @@ import 'database/database_helper.dart';
 import 'package:intl/intl.dart';
 import 'package:lottie/lottie.dart';
 
+import 'serial_service.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -74,6 +76,10 @@ final String mockContactNumber =
     dotenv.env['RECIPIENT_PHONE_NUMBER'] ?? '+18777804236';
 const double mockLatitude = 24.969271709239766;
 const double mockLongitude = 121.19130497846623;
+
+
+const String SERIAL_PORT_COM = 'COM8'; // <--- 更改為您的 COM port
+const int BAUD_RATE = 9600;
 
 // --- 資料模型 ---
 class RiskInfo {
@@ -175,6 +181,8 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
   String userName = '';
   String userId = '';
 
+  SerialService? _serialService;
+
   @override
   void initState() {
     super.initState();
@@ -202,6 +210,15 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     }
     _startBleSimulator();
     _startBatterySimulator();
+    
+    if (Platform.isWindows) {
+      // 確保 _serialService 已經被初始化
+      _serialService = SerialService(portName: SERIAL_PORT_COM, baudRate: BAUD_RATE);
+      
+      // 呼叫啟動方法
+      _startSerialListener();
+    }
+
 
     _slideController = AnimationController(
       vsync: this,
@@ -245,6 +262,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     _backendHealthCheck?.cancel(); // 釋放後端檢查計時器
     _slideController?.dispose();
     _dialogController?.dispose();
+    _serialService?.stopListening();
     _typingTimer?.cancel();
     _floatingController?.dispose();
     super.dispose();
@@ -882,6 +900,42 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
       print('藍芽狀態: $_bleStatus (連線: $_isBleConnected)');
     });
   }
+
+  void _startSerialListener() {
+    // 只有在 _serialService 存在 (即 Windows 平台) 時才執行
+    if (_serialService == null) return; 
+
+    if (_serialService!.startListening()) {
+        // 訂閱數據流
+        _serialService!.dataStream.listen((line) {
+            print('Serial Port Received: $line');
+
+            // 如果接收到 "pressed" 訊號，則觸發應用程式中的警報
+            if (line.contains('pressed')) { 
+                print('>>> Serial Port PIN PULL DETECTED! Triggering alert...');
+                
+                // 必須使用 mounted 檢查和 setState 確保在 UI 執行緒上更新狀態
+                if (mounted) {
+                    // 確保我們不是在警報倒數中再次觸發
+                    if (!_isAlerting) {
+                      _simulateAlert(); 
+                    }
+                }
+            }
+        });
+    } else {
+        // 處理連線失敗的邏輯
+        if (mounted) {
+             ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                    content: Text('串列埠連接失敗：${SERIAL_PORT_COM}。請檢查設備。'),
+                    backgroundColor: Colors.red,
+                    duration: Duration(seconds: 5),
+                ),
+            );
+        }
+    }
+}
 
   // --- UI 建構 ---
   @override
