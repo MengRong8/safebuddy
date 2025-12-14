@@ -17,62 +17,7 @@ import 'editUser_page.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'database/database_helper.dart';
 import 'package:intl/intl.dart';
-// import 'package:lottie/lottie.dart';
-import 'package:flutter/services.dart' show rootBundle;
-
-Future<List<Map<String, dynamic>>> loadLocalAccidents() async {
-  try {
-    print('載入本地交通事故資料...');
-
-    final jsonString =
-        await rootBundle.loadString('assets/hotzones/taoyuan_accidents.json');
-
-    // 直接解析為 List（資料集是陣列格式，不是 {records: [...]}）
-    final data = jsonDecode(jsonString);
-
-    // 檢查資料型態
-    if (data is List) {
-      print('成功載入 ${data.length} 筆交通事故資料');
-
-      // 過濾有效資料（必須有經緯度）
-      final validAccidents = data
-          .where((item) =>
-              item is Map<String, dynamic> &&
-              item['longitude'] != null &&
-              item['latitude'] != null &&
-              item['longitude'].toString().isNotEmpty &&
-              item['latitude'].toString().isNotEmpty)
-          .map((item) => item as Map<String, dynamic>)
-          .toList();
-
-      print('過濾後有效資料: ${validAccidents.length} 筆');
-
-      // 顯示第一筆資料範例
-      if (validAccidents.isNotEmpty) {
-        print('資料範例:');
-        final sample = validAccidents.first;
-        print('   年份: ${sample['year']}');
-        print('   日期: ${sample['date']}');
-        print('   時間: ${sample['time']}');
-        print('   事故類型: ${sample['accident_type']}');
-        print('   縣市: ${sample['county']}');
-        print('   區域: ${sample['area']}');
-        print('   地點: ${sample['road_other']}');
-        print('   經度: ${sample['longitude']}');
-        print('   緯度: ${sample['latitude']}');
-      }
-
-      return validAccidents;
-    } else {
-      print('資料格式錯誤：應為 List，實際為 ${data.runtimeType}');
-      return [];
-    }
-  } catch (e, stackTrace) {
-    print(' 載入本地資料失敗: $e');
-    print(' 堆疊追蹤: $stackTrace');
-    return [];
-  }
-}
+import 'package:lottie/lottie.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
