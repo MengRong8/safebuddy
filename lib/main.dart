@@ -18,6 +18,8 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'database/database_helper.dart';
 import 'package:intl/intl.dart';
 import 'package:lottie/lottie.dart';
+// import serial function file
+//import 'serial_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
