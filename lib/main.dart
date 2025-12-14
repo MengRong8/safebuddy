@@ -17,13 +17,68 @@ import 'editUser_page.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'database/database_helper.dart';
 import 'package:intl/intl.dart';
-import 'package:lottie/lottie.dart';
+// import 'package:lottie/lottie.dart';
+import 'package:flutter/services.dart' show rootBundle;
+
+Future<List<Map<String, dynamic>>> loadLocalAccidents() async {
+  try {
+    print('載入本地交通事故資料...');
+
+    final jsonString =
+        await rootBundle.loadString('assets/hotzones/taoyuan_accidents.json');
+
+    // 直接解析為 List（資料集是陣列格式，不是 {records: [...]}）
+    final data = jsonDecode(jsonString);
+
+    // 檢查資料型態
+    if (data is List) {
+      print('成功載入 ${data.length} 筆交通事故資料');
+
+      // 過濾有效資料（必須有經緯度）
+      final validAccidents = data
+          .where((item) =>
+              item is Map<String, dynamic> &&
+              item['longitude'] != null &&
+              item['latitude'] != null &&
+              item['longitude'].toString().isNotEmpty &&
+              item['latitude'].toString().isNotEmpty)
+          .map((item) => item as Map<String, dynamic>)
+          .toList();
+
+      print('過濾後有效資料: ${validAccidents.length} 筆');
+
+      // 顯示第一筆資料範例
+      if (validAccidents.isNotEmpty) {
+        print('資料範例:');
+        final sample = validAccidents.first;
+        print('   年份: ${sample['year']}');
+        print('   日期: ${sample['date']}');
+        print('   時間: ${sample['time']}');
+        print('   事故類型: ${sample['accident_type']}');
+        print('   縣市: ${sample['county']}');
+        print('   區域: ${sample['area']}');
+        print('   地點: ${sample['road_other']}');
+        print('   經度: ${sample['longitude']}');
+        print('   緯度: ${sample['latitude']}');
+      }
+
+      return validAccidents;
+    } else {
+      print('資料格式錯誤：應為 List，實際為 ${data.runtimeType}');
+      return [];
+    }
+  } catch (e, stackTrace) {
+    print(' 載入本地資料失敗: $e');
+    print(' 堆疊追蹤: $stackTrace');
+    return [];
+  }
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await dotenv.load(fileName: ".env");
-
+  // HttpOverrides.global = MyHttpOverrides();
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
 
@@ -72,8 +127,8 @@ const String backendUrl = 'http://localhost:3000/api';
 const String mockUserId = 'SAFEBUDDY_USER_123';
 final String mockContactNumber =
     dotenv.env['RECIPIENT_PHONE_NUMBER'] ?? '+18777804236';
-const double mockLatitude = 25.0478;
-const double mockLongitude = 121.5175;
+const double mockLatitude = 24.969271709239766;
+const double mockLongitude = 121.19130497846623;
 
 // --- 資料模型 ---
 class RiskInfo {
@@ -131,14 +186,14 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     with TickerProviderStateMixin {
   String _bleStatus = '已連線';
   bool _isAlerting = false;
-  bool _isBleConnected = false;
+  bool _isBleConnected = true;
   int _countdown = 10;
   String? _currentAlertId;
   String _riskMessage = '';
   bool _showTopNotification = false;
   bool _showCenterDialog = false;
   bool _isLoading = false;
-  int _batteryLevel = 85;
+  int _batteryLevel = 60;
   bool _hasShownLowBatteryWarning = false;
   int _currentDefaultMessageIndex = 0;
   bool _showGreetingMessage = false; //
@@ -178,6 +233,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
   @override
   void initState() {
     super.initState();
+
     _floatingController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2000), // 2秒完成一次上下飄動
@@ -1303,7 +1359,15 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
       imageScale = 1.1; // 其他圖片保持原大小
     } else if (_fullMessage.contains('充電完成')) {
       fairyImage = 'assets/image/fairy_charging.png';
-      imageScale = 1.05;
+      imageScale = 1.1;
+    } else if (_fullMessage.contains('只剩 10%') ||
+        _fullMessage.contains('剩餘 20%') ||
+        _fullMessage.contains('只剩 30%') ||
+        _fullMessage.contains('剩下 40%') ||
+        _fullMessage.contains('只剩一半') ||
+        _fullMessage.contains('電量耗盡')) {
+      fairyImage = 'assets/image/fairy_discharged.png';
+      imageScale = 1.13;
     } else if (_fullMessage.contains('藍芽未連接')) {
       fairyImage = 'assets/image/fairy_no_conn.png';
       imageScale = 1.1;
@@ -1316,7 +1380,6 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
       right: 0,
       top: 460,
       child: Center(
-        // 加入 Null 檢查：如果動畫未初始化，直接顯示內容
         child: _floatingAnimation != null
             ? AnimatedBuilder(
                 animation: _floatingAnimation!,
@@ -1391,22 +1454,22 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
     if (_showGreetingMessage) {
       // 點擊小精靈時顯示打招呼
       targetMessage = '嗨嗨～我是 SafeBuddy 你的專屬小精靈！有什麼我能幫忙的嗎？';
-    } else if (_riskMessage.contains('充電完成')) {
-      targetMessage = ' 充電完成！電量已恢復到 100%';
-    } else if (_batteryLevel == 50) {
-      targetMessage = ' 嘿！電量只剩一半囉～快去充電吧！';
-    } else if (_batteryLevel == 40) {
-      targetMessage = ' 哎呀！剩下 40% 電量了，記得找地方充電喔～';
-    } else if (_batteryLevel == 30) {
-      targetMessage = ' 救命啊！電量只剩 30% 了，我快撐不住啦～';
-    } else if (_batteryLevel == 20) {
-      targetMessage = ' 電量剩餘 20%！再不充電我就要說再見了！';
-    } else if (_batteryLevel == 10) {
-      targetMessage = ' 完蛋了！只剩 10% 了，我快要變成小天使了...！';
-    } else if (_batteryLevel == 0) {
-      targetMessage = ' 電量耗盡！裝置即將關機...';
     } else if (!_isBleConnected) {
       targetMessage = ' 注意！藍芽未連接，請確認小物是否在身邊！';
+    } else if (_isBleConnected && _riskMessage.contains('充電完成')) {
+      targetMessage = ' 充電完成！電量已恢復到 100%';
+    } else if (_isBleConnected && _batteryLevel == 50) {
+      targetMessage = ' 嘿！電量只剩一半囉～快去充電吧！';
+    } else if (_isBleConnected && _batteryLevel == 40) {
+      targetMessage = ' 哎呀！剩下 40% 電量了，記得找地方充電喔～';
+    } else if (_isBleConnected && _batteryLevel == 30) {
+      targetMessage = ' 救命啊！電量只剩 30% 了，我快撐不住啦～';
+    } else if (_isBleConnected && _batteryLevel == 20) {
+      targetMessage = ' 電量剩餘 20%！再不充電我就要說再見了！';
+    } else if (_isBleConnected && _batteryLevel == 10) {
+      targetMessage = ' 完蛋了！只剩 10% 了，我快要變成小天使了...！';
+    } else if (_isBleConnected && _batteryLevel == 0) {
+      targetMessage = ' 電量耗盡！裝置即將關機...';
     } else {
       // 其他時間顯示地圖提示
       targetMessage = '點擊左邊按鈕查看地圖及周邊風險區域喔！';
@@ -1450,7 +1513,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
 
     return Positioned(
       right: 16,
-      top: 320,
+      top: 300,
       child: Container(
         width: 220,
         height: 110,

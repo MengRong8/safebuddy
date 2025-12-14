@@ -24,13 +24,13 @@ class _MapPageState extends State<MapPage> {
   late MapController _mapController;
   late LatLng _currentPosition; //  當前位置（可移動）
 
-  List<LatLng> _crimePolygons = [];
-  List<LatLng> _accidentPolygons = [];
-  List<LatLng> _dangerIntersections = [];
+  List<List<LatLng>> high = [];
+  List<List<LatLng>> medium = [];
+  List<List<LatLng>> low = [];
 
-  bool _showCrimeZones = true;
-  bool _showAccidentZones = true;
-  bool _showDangerIntersections = true;
+  bool _showHighZones = true;
+  bool _showMediumZones = true;
+  bool _showLowZones = true;
 
   LatLng? _lastAlertPosition; // 紀錄上一次 alert 的位置
   final double _alertDistanceThreshold = 50; // 公尺
@@ -44,45 +44,28 @@ class _MapPageState extends State<MapPage> {
   }
 
   bool _isInDangerZone() {
-    // 檢查犯罪熱點（每 4 個點組成一個多邊形）
-    if (_showCrimeZones && _crimePolygons.isNotEmpty) {
-      for (int i = 0; i < _crimePolygons.length; i += 4) {
-        if (i + 3 < _crimePolygons.length) {
-          List<LatLng> polygon = [
-            _crimePolygons[i],
-            _crimePolygons[i + 1],
-            _crimePolygons[i + 2],
-            _crimePolygons[i + 3],
-          ];
-          if (_isPointInPolygon(_currentPosition, polygon)) {
-            return true;
-          }
+    //  檢查高風險熱點（每個多邊形獨立）
+    if (_showHighZones && high.isNotEmpty) {
+      for (var polygon in high) {
+        if (_isPointInPolygon(_currentPosition, polygon)) {
+          return true;
         }
       }
     }
 
-    // 檢查事故熱點（每 4 個點組成一個多邊形）
-    if (_showAccidentZones && _accidentPolygons.isNotEmpty) {
-      for (int i = 0; i < _accidentPolygons.length; i += 4) {
-        if (i + 3 < _accidentPolygons.length) {
-          List<LatLng> polygon = [
-            _accidentPolygons[i],
-            _accidentPolygons[i + 1],
-            _accidentPolygons[i + 2],
-            _accidentPolygons[i + 3],
-          ];
-          if (_isPointInPolygon(_currentPosition, polygon)) {
-            return true;
-          }
+    //  檢查中風險熱點（每個多邊形獨立）
+    if (_showMediumZones && medium.isNotEmpty) {
+      for (var polygon in medium) {
+        if (_isPointInPolygon(_currentPosition, polygon)) {
+          return true;
         }
       }
     }
 
-    // 檢查危險路口（50 公尺範圍內）
-    if (_showDangerIntersections && _dangerIntersections.isNotEmpty) {
-      for (var intersection in _dangerIntersections) {
-        double distance = _calculateDistance(_currentPosition, intersection);
-        if (distance < 50) {
+    //  檢查低風險熱點（每個多邊形獨立）
+    if (_showMediumZones && low.isNotEmpty) {
+      for (var polygon in low) {
+        if (_isPointInPolygon(_currentPosition, polygon)) {
           return true;
         }
       }
@@ -94,48 +77,31 @@ class _MapPageState extends State<MapPage> {
   String _getDangerZoneMessage() {
     List<String> dangers = [];
 
-    // 檢查犯罪熱點
-    if (_showCrimeZones && _crimePolygons.isNotEmpty) {
-      for (int i = 0; i < _crimePolygons.length; i += 4) {
-        if (i + 3 < _crimePolygons.length) {
-          List<LatLng> polygon = [
-            _crimePolygons[i],
-            _crimePolygons[i + 1],
-            _crimePolygons[i + 2],
-            _crimePolygons[i + 3],
-          ];
-          if (_isPointInPolygon(_currentPosition, polygon)) {
-            dangers.add('犯罪熱點');
-            break;
-          }
+    // ✅ 檢查高風險熱區
+    if (_showHighZones && high.isNotEmpty) {
+      for (var polygon in high) {
+        if (_isPointInPolygon(_currentPosition, polygon)) {
+          dangers.add('高風險熱區');
+          break;
         }
       }
     }
 
-    // 檢查事故熱點
-    if (_showAccidentZones && _accidentPolygons.isNotEmpty) {
-      for (int i = 0; i < _accidentPolygons.length; i += 4) {
-        if (i + 3 < _accidentPolygons.length) {
-          List<LatLng> polygon = [
-            _accidentPolygons[i],
-            _accidentPolygons[i + 1],
-            _accidentPolygons[i + 2],
-            _accidentPolygons[i + 3],
-          ];
-          if (_isPointInPolygon(_currentPosition, polygon)) {
-            dangers.add('事故多發區');
-            break;
-          }
+    // ✅ 檢查中風險熱區
+    if (_showMediumZones && medium.isNotEmpty) {
+      for (var polygon in medium) {
+        if (_isPointInPolygon(_currentPosition, polygon)) {
+          dangers.add('中風險熱區');
+          break;
         }
       }
     }
 
-    // 檢查危險路口
-    if (_showDangerIntersections && _dangerIntersections.isNotEmpty) {
-      for (var intersection in _dangerIntersections) {
-        double distance = _calculateDistance(_currentPosition, intersection);
-        if (distance < 50) {
-          dangers.add('危險路口附近');
+    // ✅ 檢查低風險熱區
+    if (_showLowZones && low.isNotEmpty) {
+      for (var polygon in low) {
+        if (_isPointInPolygon(_currentPosition, polygon)) {
+          dangers.add('低風險熱區');
           break;
         }
       }
@@ -189,65 +155,111 @@ class _MapPageState extends State<MapPage> {
 
   Future<void> _loadHotZoneData() async {
     try {
-      // 載入犯罪熱點（多邊形區域）
-      final crimeData =
-          await rootBundle.loadString('assets/hotzones/crime_zones.json');
-      final crimeJson = jsonDecode(crimeData) as List;
+      // ✅ 載入高風險熱區（改用 GeoJSON）
+      final highData = await rootBundle
+          .loadString('assets/hotzones/accident_hotzones_high.geojson');
+      final highGeoJson = jsonDecode(highData);
 
-      List<LatLng> allCrimePoints = [];
-      for (var zone in crimeJson) {
-        final coords = zone['coordinates'] as List;
-        for (var coord in coords) {
-          allCrimePoints.add(LatLng(coord[0] as double, coord[1] as double));
+      List<List<LatLng>> highPolygonsList = [];
+
+      // 解析 GeoJSON FeatureCollection
+      if (highGeoJson['type'] == 'FeatureCollection') {
+        final features = highGeoJson['features'] as List;
+
+        for (var feature in features) {
+          if (feature['geometry']['type'] == 'Polygon') {
+            final coordinates = feature['geometry']['coordinates'][0] as List;
+
+            List<LatLng> polygon = [];
+            for (var coord in coordinates) {
+              polygon.add(LatLng(
+                coord[1] as double, // 緯度
+                coord[0] as double, // 經度
+              ));
+            }
+
+            highPolygonsList.add(polygon);
+          }
         }
       }
 
       setState(() {
-        _crimePolygons = allCrimePoints;
+        high = highPolygonsList;
       });
-      print('犯罪熱點載入成功: ${allCrimePoints.length} 個點');
+      print('高風險熱區載入成功: ${high.length} 個區域');
 
-      // 載入事故熱點（多邊形區域）
-      final accidentData =
-          await rootBundle.loadString('assets/hotzones/accident_zones.json');
-      final accidentJson = jsonDecode(accidentData) as List;
+      // ✅ 載入中風險熱區（改用 GeoJSON）
+      final mediumData = await rootBundle
+          .loadString('assets/hotzones/accident_hotzones_medium.geojson');
+      final mediumGeoJson = jsonDecode(mediumData);
 
-      List<LatLng> allAccidentPoints = [];
-      for (var zone in accidentJson) {
-        final coords = zone['coordinates'] as List;
-        for (var coord in coords) {
-          allAccidentPoints.add(LatLng(coord[0] as double, coord[1] as double));
+      List<List<LatLng>> mediumPolygonsList = [];
+
+      // 解析 GeoJSON FeatureCollection
+      if (mediumGeoJson['type'] == 'FeatureCollection') {
+        final features = mediumGeoJson['features'] as List;
+
+        for (var feature in features) {
+          if (feature['geometry']['type'] == 'Polygon') {
+            final coordinates = feature['geometry']['coordinates'][0] as List;
+
+            List<LatLng> polygon = [];
+            for (var coord in coordinates) {
+              polygon.add(LatLng(
+                coord[1] as double, // 緯度
+                coord[0] as double, // 經度
+              ));
+            }
+
+            mediumPolygonsList.add(polygon);
+          }
         }
       }
 
       setState(() {
-        _accidentPolygons = allAccidentPoints;
+        medium = mediumPolygonsList;
       });
-      print('事故區域載入成功: ${allAccidentPoints.length} 個點');
+      print('中風險熱區載入成功: ${medium.length} 個區域');
 
-      // 載入危險路口（單點）
-      final intersectionData = await rootBundle
-          .loadString('assets/hotzones/danger_intersections.json');
-      final intersectionJson = jsonDecode(intersectionData) as List;
+      // ✅ 載入低風險熱區（改用 GeoJSON）
+      final lowData = await rootBundle
+          .loadString('assets/hotzones/accident_hotzones_low.geojson');
+      final lowGeoJson = jsonDecode(lowData);
 
-      List<LatLng> intersectionPoints = [];
-      for (var intersection in intersectionJson) {
-        final coord = intersection['coordinate'] as List;
-        intersectionPoints.add(LatLng(coord[0] as double, coord[1] as double));
+      List<List<LatLng>> lowPolygonsList = [];
+
+      // 解析 GeoJSON FeatureCollection
+      if (lowGeoJson['type'] == 'FeatureCollection') {
+        final features = lowGeoJson['features'] as List;
+
+        for (var feature in features) {
+          if (feature['geometry']['type'] == 'Polygon') {
+            final coordinates = feature['geometry']['coordinates'][0] as List;
+
+            List<LatLng> polygon = [];
+            for (var coord in coordinates) {
+              polygon.add(LatLng(
+                coord[1] as double, // 緯度
+                coord[0] as double, // 經度
+              ));
+            }
+
+            lowPolygonsList.add(polygon);
+          }
+        }
       }
 
       setState(() {
-        _dangerIntersections = intersectionPoints;
+        low = lowPolygonsList;
       });
-      print('危險路口載入成功: ${intersectionPoints.length} 個點');
+      print('低風險熱區載入成功: ${low.length} 個點');
     } catch (e, stackTrace) {
-      print(' 熱點資料載入失敗: $e');
+      print('❌ 熱點資料載入失敗: $e');
       print('堆疊追蹤: $stackTrace');
     }
   }
 
   Future<void> _checkAndInsertAlert(String userId) async {
-    // 如果使用者 ID 是 0 或 "0"，不新增 alert
     if (userId == '0' || userId == 0) return;
 
     if (_isInDangerZone()) {
@@ -255,44 +267,32 @@ class _MapPageState extends State<MapPage> {
           _calculateDistance(_currentPosition, _lastAlertPosition!) >
               _alertDistanceThreshold) {
         String category = '';
-        if (_showCrimeZones) {
-          for (int i = 0; i < _crimePolygons.length; i += 4) {
-            if (i + 3 < _crimePolygons.length) {
-              List<LatLng> polygon = [
-                _crimePolygons[i],
-                _crimePolygons[i + 1],
-                _crimePolygons[i + 2],
-                _crimePolygons[i + 3],
-              ];
-              if (_isPointInPolygon(_currentPosition, polygon)) {
-                category = '犯罪熱點';
-                break;
-              }
+
+        // ✅ 檢查高風險熱區
+        if (_showHighZones) {
+          for (var polygon in high) {
+            if (_isPointInPolygon(_currentPosition, polygon)) {
+              category = '高風險熱區';
+              break;
             }
           }
         }
 
-        if (category.isEmpty && _showAccidentZones) {
-          for (int i = 0; i < _accidentPolygons.length; i += 4) {
-            if (i + 3 < _accidentPolygons.length) {
-              List<LatLng> polygon = [
-                _accidentPolygons[i],
-                _accidentPolygons[i + 1],
-                _accidentPolygons[i + 2],
-                _accidentPolygons[i + 3],
-              ];
-              if (_isPointInPolygon(_currentPosition, polygon)) {
-                category = '事故多發區';
-                break;
-              }
+        // ✅ 檢查中風險熱區
+        if (category.isEmpty && _showMediumZones) {
+          for (var polygon in medium) {
+            if (_isPointInPolygon(_currentPosition, polygon)) {
+              category = '中風險熱區';
+              break;
             }
           }
         }
 
-        if (category.isEmpty && _showDangerIntersections) {
-          for (var intersection in _dangerIntersections) {
-            if (_calculateDistance(_currentPosition, intersection) < 50) {
-              category = '危險路口';
+        // ✅ 檢查低風險熱區
+        if (category.isEmpty && _showLowZones) {
+          for (var polygon in low) {
+            if (_isPointInPolygon(_currentPosition, polygon)) {
+              category = '低風險熱區';
               break;
             }
           }
@@ -300,7 +300,7 @@ class _MapPageState extends State<MapPage> {
 
         if (category.isNotEmpty) {
           final alert = {
-            'area': '${category}',
+            'area': category,
             'category': '自動記錄',
             'time': DateTime.now().toIso8601String(),
             'userId': userId,
@@ -358,29 +358,22 @@ class _MapPageState extends State<MapPage> {
               ),
 
               // 犯罪熱點（紅色多邊形
-              if (_showCrimeZones && _crimePolygons.isNotEmpty)
+              if (_showHighZones && high.isNotEmpty)
                 PolygonLayer(
-                  polygons: _buildCrimePolygons(),
+                  polygons: _buildHighRiskPolygons(),
                 ),
 
               // 事故熱點（橙色多邊形
-              if (_showAccidentZones && _accidentPolygons.isNotEmpty)
+              if (_showMediumZones && medium.isNotEmpty)
                 PolygonLayer(
-                  polygons: _buildAccidentPolygons(),
+                  polygons: _buildMediumPolygons(),
                 ),
 
               // 危險路口（黃色圓圈）
-              if (_showDangerIntersections && _dangerIntersections.isNotEmpty)
-                CircleLayer(
-                  circles: _dangerIntersections
-                      .map((point) => CircleMarker(
-                            point: point,
-                            color: Colors.yellow.withValues(alpha: 0.5),
-                            borderColor: Colors.orange,
-                            borderStrokeWidth: 2,
-                            radius: 20,
-                          ))
-                      .toList(),
+              // 事故熱點（橙色多邊形
+              if (_showLowZones && low.isNotEmpty)
+                PolygonLayer(
+                  polygons: _buildLowRiskPolygons(),
                 ),
 
               // 當前位置標記
@@ -466,26 +459,24 @@ class _MapPageState extends State<MapPage> {
             child: Column(
               children: [
                 _buildLayerToggle(
-                  '犯罪',
-                  _showCrimeZones,
+                  '高風險', // ✅ 改這裡
+                  _showHighZones,
                   Colors.red,
-                  () => setState(() => _showCrimeZones = !_showCrimeZones),
+                  () => setState(() => _showHighZones = !_showHighZones),
                 ),
                 const SizedBox(height: 8),
                 _buildLayerToggle(
-                  '事故',
-                  _showAccidentZones,
+                  '中風險', // ✅ 改這裡
+                  _showMediumZones,
                   Colors.orange,
-                  () =>
-                      setState(() => _showAccidentZones = !_showAccidentZones),
+                  () => setState(() => _showMediumZones = !_showMediumZones),
                 ),
                 const SizedBox(height: 8),
                 _buildLayerToggle(
-                  '路口',
-                  _showDangerIntersections,
+                  '低風險', // ✅ 改這裡
+                  _showLowZones,
                   Colors.yellow,
-                  () => setState(() =>
-                      _showDangerIntersections = !_showDangerIntersections),
+                  () => setState(() => _showLowZones = !_showLowZones),
                 ),
               ],
             ),
@@ -548,55 +539,42 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
-  List<Polygon> _buildCrimePolygons() {
-    List<Polygon> polygons = [];
-
-    for (int i = 0; i < _crimePolygons.length; i += 4) {
-      if (i + 3 < _crimePolygons.length) {
-        polygons.add(
-          Polygon(
-            points: [
-              _crimePolygons[i],
-              _crimePolygons[i + 1],
-              _crimePolygons[i + 2],
-              _crimePolygons[i + 3],
-            ],
-            color: Colors.red.withValues(alpha: 0.3),
-            borderColor: Colors.red,
-            borderStrokeWidth: 2.0,
-            isFilled: true,
-          ),
-        );
-      }
-    }
-
-    return polygons;
+  // ✅ 改函數名稱和註解
+  List<Polygon> _buildHighRiskPolygons() {
+    return high.map((polygon) {
+      return Polygon(
+        points: polygon,
+        color: Colors.red.withValues(alpha: 0.3),
+        borderColor: Colors.red,
+        borderStrokeWidth: 2.0,
+        isFilled: true,
+      );
+    }).toList();
   }
 
-  // 建立事故區域多邊形列表
-  List<Polygon> _buildAccidentPolygons() {
-    // 假設每 4 個點組成一個多邊形
-    List<Polygon> polygons = [];
+  // ✅ 保持中風險不變
+  List<Polygon> _buildMediumPolygons() {
+    return medium.map((polygon) {
+      return Polygon(
+        points: polygon,
+        color: Colors.orange.withValues(alpha: 0.3),
+        borderColor: Colors.orange,
+        borderStrokeWidth: 2.0,
+        isFilled: true,
+      );
+    }).toList();
+  }
 
-    for (int i = 0; i < _accidentPolygons.length; i += 4) {
-      if (i + 3 < _accidentPolygons.length) {
-        polygons.add(
-          Polygon(
-            points: [
-              _accidentPolygons[i],
-              _accidentPolygons[i + 1],
-              _accidentPolygons[i + 2],
-              _accidentPolygons[i + 3],
-            ],
-            color: Colors.orange.withValues(alpha: 0.3),
-            borderColor: Colors.orange,
-            borderStrokeWidth: 2.0,
-            isFilled: true,
-          ),
-        );
-      }
-    }
-
-    return polygons;
+  // ✅ 新增低風險多邊形函數
+  List<Polygon> _buildLowRiskPolygons() {
+    return low.map((polygon) {
+      return Polygon(
+        points: polygon,
+        color: Colors.yellow.withValues(alpha: 0.3),
+        borderColor: Colors.yellow.shade700,
+        borderStrokeWidth: 2.0,
+        isFilled: true,
+      );
+    }).toList();
   }
 }
