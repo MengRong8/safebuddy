@@ -619,7 +619,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
 
   Future<void> _cancelAlert() async {
     setState(() => _isLoading = true);
-
+    _serialService?.sendCommand('S');
     final alert = {
       'area': '無',
       'category': '誤觸警報',
@@ -852,7 +852,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
       _showBackendNotConnectedError();
       return;
     }
-
+  _serialService?.sendCommand('W');
     setState(() {
       _isAlerting = true;
       _showCenterDialog = true;
@@ -864,6 +864,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
 
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_countdown == 0) {
+        _serialService?.sendCommand('A');
         timer.cancel();
         _dialogController?.reverse();
         Future.delayed(const Duration(milliseconds: 300), () {
@@ -967,29 +968,30 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
 
 // main.dart 內，在其他類似的函數旁邊新增：
 
-void _retryConnection() {
-  if (_serialService == null) {
-    // 可能是非 Windows 平台，不執行
-    return;
+void _retryConnection() async { // 1. 改為 async
+    if (_serialService == null) {
+      return;
+    }
+  _isBleConnected=false;
+    // 2. 停止舊的監聽
+    print('>>> Stopping old connection to release resources...');
+    _serialService!.stopListening();
+
+    // 3. 顯示提示
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('正在重置連線，請稍候...'),
+        duration: Duration(seconds: 1),
+      ),
+    );
+
+    // 4. ⚠️ 關鍵：等待 1 秒讓 Windows 釋放 COM Port 鎖定
+    await Future.delayed(const Duration(seconds: 1));
+
+    // 5. 重新啟動串列埠監聽器
+    print('>>> Retrying Serial Connection...');
+    _startSerialListener();
   }
-  
-  // 1. 清除任何舊的連線和監聽器
-  _serialService!.stopListening();
-  
-  // 2. 重新初始化 SerialService (如果需要，但這裡只需要重新啟動監聽)
-  
-  // 3. 重新啟動串列埠監聽器
-  print('>>> Retrying Serial Connection...');
-  _startSerialListener();
-  
-  // 提示使用者
-  ScaffoldMessenger.of(context).showSnackBar(
-    const SnackBar(
-      content: Text('正在重新嘗試連線...'),
-      duration: Duration(seconds: 1),
-    ),
-  );
-}
 
   // --- UI 建構 ---
   @override
