@@ -902,69 +902,93 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
   //   });
   // }
 
-  void _startSerialListener() {
+void _startSerialListener() {
     // 只有在 _serialService 存在 (即 Windows 平台) 時才執行
-    if (_serialService == null) return; 
-    //  連線狀態 Stream
+    if (_serialService == null) return;
+
+    // 1. 監聽連線狀態 (Connection Status Stream)
+    // 這會處理連線過程中的斷線或重連狀態更新
     _serialService!.connectionStatusStream.listen((isConnected) {
-        if (mounted) {
-            setState(() {
-                _isBleConnected = isConnected;
-                _bleStatus = isConnected ? '已連線' : '未連線';
-
-                if (!isConnected) {
-                    print('BLE/Serial Connection Lost!');
-                    // 可以在這裡顯示一個 SnackBar 提示連線中斷
-                    ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text('藍牙/串列埠連線中斷，請檢查設備！'),
-                            backgroundColor: Colors.orange,
-                            duration: Duration(seconds: 4),
-                        ),
-                    );
-                }
-            });
-        }
-    });
-    if (_serialService!.startListening()) {
       if (mounted) {
-            setState(() {
-                _isBleConnected = true;
-                _bleStatus = '已連線';
-            });
-            
-        }
-        // 訂閱數據流
-        _serialService!.dataStream.listen((line) {
-            //print('Serial Port Received: $line');
-
-            // 如果接收到 "pressed" 訊號，則觸發應用程式中的警報
-            if (line.contains('pressed')) { 
-                print('>>> Serial Port PIN PULL DETECTED! Triggering alert...');
-                
-                // 必須使用 mounted 檢查和 setState 確保在 UI 執行緒上更新狀態
-                if (mounted) {
-                    // 確保我們不是在警報倒數中再次觸發
-                    if (!_isAlerting) {
-                      _isAlert(); 
-                    }
-                }
-            }
+        setState(() {
+          _isBleConnected = isConnected;
+          _bleStatus = isConnected ? '已連線' : '未連線';
         });
-    //}
-    } else {
-        // 處理連線失敗的邏輯
-        if (mounted) {
-             ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                    content: Text('串列埠連接失敗：${SERIAL_PORT_COM}。請檢查設備。'),
-                    backgroundColor: Colors.red,
-                    duration: Duration(seconds: 5),
-                ),
-            );
+
+        // 如果斷線，印出 Log (可選擇是否要顯示 SnackBar，避免太頻繁打擾使用者)
+        if (!isConnected) {
+          print(' BLE/Serial Connection Lost / Disconnected');
         }
+      }
+    });
+
+    // 2. 嘗試啟動連線 (Start Listening)
+    bool isStarted = _serialService!.startListening();
+
+    if (isStarted) {
+      // --- 連線成功區塊 ---
+      
+      // 手動設定一次狀態 (確保 UI 立即更新為綠色)
+      if (mounted) {
+        setState(() {
+          _isBleConnected = true;
+          _bleStatus = '已連線';
+        });
+      }
+
+      // 3. 訂閱數據流 (Data Stream) - 處理業務邏輯
+      _serialService!.dataStream.listen((line) {
+        // ----------------------------------------------------
+        // A. 收到 "pressed" -> 觸發警報
+        // ----------------------------------------------------
+        if (line.contains('pressed')) {
+          print('>>> [Hardware] Trigger Signal Received');
+          if (mounted && !_isAlerting) {
+            _isAlert(); // 呼叫您的觸發函數 (注意是 _isAlert)
+          }
+        }
+        // ----------------------------------------------------
+        // B. 收到 "stopped" -> 取消警報 (綠色按鈕)
+        // ----------------------------------------------------
+        else if (line.contains('stopped')) {
+          print('>>> [Hardware] Cancel Signal Received');
+
+          // 只有在 "正在警報中" 的時候才需要執行取消
+          if (mounted && _isAlerting) {
+            // 直接呼叫原本的取消函數
+            _cancelAlert();
+
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('已透過硬體按鈕解除警報'),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        }
+      });
+
+    } else {
+      // --- 連線失敗區塊 (isStarted == false) ---
+      
+      // 處理初次連線失敗的邏輯
+      if (mounted) {
+        setState(() {
+          _isBleConnected = false;
+          _bleStatus = '未連線';
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('串列埠連接失敗：無法開啟 COM8。請檢查設備。'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
     }
-}
+  }
 
 // main.dart 內，在其他類似的函數旁邊新增：
 
