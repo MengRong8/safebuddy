@@ -904,7 +904,27 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
   void _startSerialListener() {
     // 只有在 _serialService 存在 (即 Windows 平台) 時才執行
     if (_serialService == null) return; 
+    //  連線狀態 Stream
+    _serialService!.connectionStatusStream.listen((isConnected) {
+        if (mounted) {
+            setState(() {
+                _isBleConnected = isConnected;
+                _bleStatus = isConnected ? '已連線' : '未連線';
 
+                if (!isConnected) {
+                    print('BLE/Serial Connection Lost!');
+                    // 可以在這裡顯示一個 SnackBar 提示連線中斷
+                    ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text('藍牙/串列埠連線中斷，請檢查設備！'),
+                            backgroundColor: Colors.orange,
+                            duration: Duration(seconds: 4),
+                        ),
+                    );
+                }
+            });
+        }
+    });
     if (_serialService!.startListening()) {
       if (mounted) {
             setState(() {
@@ -915,7 +935,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
         }
         // 訂閱數據流
         _serialService!.dataStream.listen((line) {
-            print('Serial Port Received: $line');
+            //print('Serial Port Received: $line');
 
             // 如果接收到 "pressed" 訊號，則觸發應用程式中的警報
             if (line.contains('pressed')) { 
@@ -930,6 +950,7 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
                 }
             }
         });
+    //}
     } else {
         // 處理連線失敗的邏輯
         if (mounted) {
@@ -942,6 +963,32 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
             );
         }
     }
+}
+
+// main.dart 內，在其他類似的函數旁邊新增：
+
+void _retryConnection() {
+  if (_serialService == null) {
+    // 可能是非 Windows 平台，不執行
+    return;
+  }
+  
+  // 1. 清除任何舊的連線和監聽器
+  _serialService!.stopListening();
+  
+  // 2. 重新初始化 SerialService (如果需要，但這裡只需要重新啟動監聽)
+  
+  // 3. 重新啟動串列埠監聽器
+  print('>>> Retrying Serial Connection...');
+  _startSerialListener();
+  
+  // 提示使用者
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('正在重新嘗試連線...'),
+      duration: Duration(seconds: 1),
+    ),
+  );
 }
 
   // --- UI 建構 ---
@@ -1026,11 +1073,25 @@ class _SafeBuddyHomePageState extends State<SafeBuddyHomePage>
       child: GestureDetector(
         //  點擊手動充電
         onTap: () {
-          if (_batteryLevel < 100) {
-            print(' 手動觸發充電');
-            _chargeBattery();
+          if (isConnected) {
+            // 情況 A: 已連線 -> 執行原本的充電邏輯
+            if (_batteryLevel < 100) {
+              print(' 手動觸發充電');
+              _chargeBattery();
+            } else {
+              print('電量已滿，無需充電');
+            }
           } else {
-            print('電量已滿，無需充電');
+            // 情況 B: 未連線 -> 執行重連邏輯
+            print(' 藍牙未連線，嘗試重連...');
+            _retryConnection();
+            ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text('藍牙/串列埠重新連線中......'),
+                            backgroundColor: Colors.orange,
+                            duration: Duration(seconds: 4),
+                        ),
+                    );
           }
         },
         child: Container(

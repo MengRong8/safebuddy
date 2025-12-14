@@ -1,4 +1,4 @@
-// lib/serial_service.dart (使用 serial_port_win32 - 最終修正為直接傳參)
+// lib/serial_service.dart
 
 import 'dart:async';
 import 'package:serial_port_win32/serial_port_win32.dart'; 
@@ -11,7 +11,12 @@ class SerialService {
   
   SerialPort? _serialPort; 
   Timer? _readTimer; 
+  
+  // 專門用於通知連線狀態變化的 Stream
+  final StreamController<bool> _connectionStatusController = StreamController.broadcast();
+  Stream<bool> get connectionStatusStream => _connectionStatusController.stream;
 
+  // 專門用於傳輸數據的 Stream
   final StreamController<String> _dataStreamController = StreamController.broadcast();
   Stream<String> get dataStream => _dataStreamController.stream;
 
@@ -19,73 +24,113 @@ class SerialService {
 
   // 啟動連線和監聽
   bool startListening() {
-    if (_serialPort != null) {
-      stopListening();
-    }
-    
+    // 1. 平台檢查
     if (!Platform.isWindows) {
-      print('❌ Serial Service: serial_port_win32 is only supported on Windows.');
+      print('❌ Serial Service: Not running on Windows.');
       return false;
     }
-    
+
+    // 2. 清理舊的資源 (防止重複開啟)
+    _closePortResources();
+
     try {
-      // 1. 修正建構函式：直接傳遞 BaudRate、ByteSize、StopBits、Parity 等參數
+      // 3. 建立 SerialPort 實例
       _serialPort = SerialPort(
         portName,
-        openNow: false, 
-        // ⚠️ 根據您提供的文件，使用大寫開頭的具名參數
+        openNow: false, // ⚠️ 關鍵：先不要在這裡開啟，讓我們手動開啟以捕捉錯誤
         BaudRate: baudRate,
-        ByteSize: 8, // Data Bits
-        StopBits: 1, // Stop Bits
-        Parity: 0,   // 0 = NONE (使用整數值，因為 Enum 可能不相容)
-        // ❌ 移除 config: PortConfig(...) 和 setCommTimeouts
+        ByteSize: 8,
+        StopBits: 1,
+        Parity: 0, 
       );
       
-      _serialPort!.open(); 
-      print('✅ Serial Port (Win32): Connected to $portName (Baud: $baudRate)');
+      // 4. 嘗試開啟埠口 (這裡是防止崩潰的關鍵)
+      try {
+        _serialPort!.open(); 
+      } catch (e) {
+        print('⚠️ Serial Port Connection Failed (Device might not be connected): $e');
+        _connectionStatusController.add(false); // 通知 UI 連線失敗
+        return false; // 優雅地返回失敗，不要崩潰
+      }
 
-      // 2. 啟動定時輪詢 (保持這個邏輯，因為 Stream 屬性可能有問題)
+      print('✅ Serial Port (Win32): Connected to $portName (Baud: $baudRate)');
+      
+      // 5. 連線成功，發送 true 狀態
+      _connectionStatusController.add(true); 
+
+      // 6. 啟動定時輪詢讀取 (Polling)
       _readTimer = Timer.periodic(const Duration(milliseconds: 50), (timer) async {
-        if (!_serialPort!.isOpened) {
+        // 檢查埠口是否意外關閉
+        if (_serialPort == null || !_serialPort!.isOpened) {
           timer.cancel();
+          print('⚠️ Serial Port unexpectedly closed.');
+          _connectionStatusController.add(false); 
           return;
         }
-
+        
         try {
-          // 使用 readBytes 讀取緩衝區中所有可用的數據
-          // 設置 timeout: Duration.zero 確保是非阻塞讀取
-          // 嘗試讀取最多 1024 bytes
+          // 嘗試非阻塞讀取
           Uint8List data = await _serialPort!.readBytes(1024, timeout: Duration.zero); 
           
           if (data.isNotEmpty) {
-            // 將數據轉換為字串並發佈
             final line = String.fromCharCodes(data).trim();
             if (line.isNotEmpty) {
+              // 發送數據到數據流
               _dataStreamController.add(line);
+              
+              // 🆕 收到數據，再次確認連線狀態為 true (心跳機制)
+              if (!_connectionStatusController.isClosed) {
+                _connectionStatusController.add(true); 
+              }
             }
           }
         } catch (e) {
-          // 讀取錯誤，取消定時器
-          print('⚠️ Error during serial read poll: $e');
-          // 這裡不應自動關閉，讓錯誤傳播，直到應用程式或外部邏輯決定關閉
+          print('❌ Error during serial read poll: $e');
+          timer.cancel();
+          _connectionStatusController.add(false); // 讀取錯誤視為斷線
         }
       });
       
       return true;
 
     } catch (e) {
-      print('❌ Serial Port Error during open/config: $e');
+      print('❌ Serial Port Initialization Error: $e');
       _serialPort = null;
+      _connectionStatusController.add(false); 
       return false;
     }
   }
 
-  // 停止並釋放資源
+  // 內部私有方法：僅關閉埠口和計時器，不關閉 StreamController
+  void _closePortResources() {
+    _readTimer?.cancel();
+    _readTimer = null;
+    if (_serialPort != null) {
+      if (_serialPort!.isOpened) {
+        _serialPort!.close();
+      }
+      _serialPort = null;
+    }
+  }
+
+  // 外部呼叫：停止監聽
   void stopListening() {
-    print('Serial Port (Win32): Closing connection...');
-    _readTimer?.cancel(); 
-    _dataStreamController.close(); 
-    _serialPort?.close(); 
-    _serialPort = null;
+    print('Serial Port (Win32): Stopping listening...');
+    _closePortResources();
+    
+    // 通知 UI 已斷線
+    if (!_connectionStatusController.isClosed) {
+      _connectionStatusController.add(false);
+    }
+    
+    // 注意：我們故意不呼叫 StreamController.close()
+    // 這樣使用者點擊「重試」時，這些 Stream 依然可用，不需要重新建立 Service 物件。
+  }
+  
+  // 如果確定整個 App 要關閉了，可以呼叫這個
+  void dispose() {
+    stopListening();
+    _connectionStatusController.close();
+    _dataStreamController.close();
   }
 }
