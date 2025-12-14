@@ -77,7 +77,7 @@ class _MapPageState extends State<MapPage> {
   String _getDangerZoneMessage() {
     List<String> dangers = [];
 
-    // ✅ 檢查高風險熱區
+    // 檢查高風險熱區
     if (_showHighZones && high.isNotEmpty) {
       for (var polygon in high) {
         if (_isPointInPolygon(_currentPosition, polygon)) {
@@ -87,7 +87,7 @@ class _MapPageState extends State<MapPage> {
       }
     }
 
-    // ✅ 檢查中風險熱區
+    // 檢查中風險熱區
     if (_showMediumZones && medium.isNotEmpty) {
       for (var polygon in medium) {
         if (_isPointInPolygon(_currentPosition, polygon)) {
@@ -97,7 +97,7 @@ class _MapPageState extends State<MapPage> {
       }
     }
 
-    // ✅ 檢查低風險熱區
+    // 檢查低風險熱區
     if (_showLowZones && low.isNotEmpty) {
       for (var polygon in low) {
         if (_isPointInPolygon(_currentPosition, polygon)) {
@@ -155,7 +155,7 @@ class _MapPageState extends State<MapPage> {
 
   Future<void> _loadHotZoneData() async {
     try {
-      // ✅ 載入高風險熱區（改用 GeoJSON）
+      // 載入高風險熱區（改用 GeoJSON）
       final highData = await rootBundle
           .loadString('assets/hotzones/accident_hotzones_high.geojson');
       final highGeoJson = jsonDecode(highData);
@@ -188,7 +188,7 @@ class _MapPageState extends State<MapPage> {
       });
       print('高風險熱區載入成功: ${high.length} 個區域');
 
-      // ✅ 載入中風險熱區（改用 GeoJSON）
+      // 載入中風險熱區（改用 GeoJSON）
       final mediumData = await rootBundle
           .loadString('assets/hotzones/accident_hotzones_medium.geojson');
       final mediumGeoJson = jsonDecode(mediumData);
@@ -221,7 +221,7 @@ class _MapPageState extends State<MapPage> {
       });
       print('中風險熱區載入成功: ${medium.length} 個區域');
 
-      // ✅ 載入低風險熱區（改用 GeoJSON）
+      // 載入低風險熱區（改用 GeoJSON）
       final lowData = await rootBundle
           .loadString('assets/hotzones/accident_hotzones_low.geojson');
       final lowGeoJson = jsonDecode(lowData);
@@ -268,7 +268,7 @@ class _MapPageState extends State<MapPage> {
               _alertDistanceThreshold) {
         String category = '';
 
-        // ✅ 檢查高風險熱區
+        // 檢查高風險熱區
         if (_showHighZones) {
           for (var polygon in high) {
             if (_isPointInPolygon(_currentPosition, polygon)) {
@@ -278,7 +278,7 @@ class _MapPageState extends State<MapPage> {
           }
         }
 
-        // ✅ 檢查中風險熱區
+        // 檢查中風險熱區
         if (category.isEmpty && _showMediumZones) {
           for (var polygon in medium) {
             if (_isPointInPolygon(_currentPosition, polygon)) {
@@ -288,7 +288,7 @@ class _MapPageState extends State<MapPage> {
           }
         }
 
-        // ✅ 檢查低風險熱區
+        // 檢查低風險熱區
         if (category.isEmpty && _showLowZones) {
           for (var polygon in low) {
             if (_isPointInPolygon(_currentPosition, polygon)) {
@@ -459,21 +459,21 @@ class _MapPageState extends State<MapPage> {
             child: Column(
               children: [
                 _buildLayerToggle(
-                  '高風險', // ✅ 改這裡
+                  '高風險', // 改這裡
                   _showHighZones,
                   Colors.red,
                   () => setState(() => _showHighZones = !_showHighZones),
                 ),
                 const SizedBox(height: 8),
                 _buildLayerToggle(
-                  '中風險', // ✅ 改這裡
+                  '中風險', // 改這裡
                   _showMediumZones,
                   Colors.orange,
                   () => setState(() => _showMediumZones = !_showMediumZones),
                 ),
                 const SizedBox(height: 8),
                 _buildLayerToggle(
-                  '低風險', // ✅ 改這裡
+                  '低風險', // 改這裡
                   _showLowZones,
                   Colors.yellow,
                   () => setState(() => _showLowZones = !_showLowZones),
@@ -539,7 +539,7 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
-  // ✅ 改函數名稱和註解
+  // 改函數名稱和註解
   List<Polygon> _buildHighRiskPolygons() {
     return high.map((polygon) {
       return Polygon(
@@ -552,7 +552,7 @@ class _MapPageState extends State<MapPage> {
     }).toList();
   }
 
-  // ✅ 保持中風險不變
+  // 保持中風險不變
   List<Polygon> _buildMediumPolygons() {
     return medium.map((polygon) {
       return Polygon(
@@ -565,7 +565,7 @@ class _MapPageState extends State<MapPage> {
     }).toList();
   }
 
-  // ✅ 新增低風險多邊形函數
+  // 新增低風險多邊形函數
   List<Polygon> _buildLowRiskPolygons() {
     return low.map((polygon) {
       return Polygon(
