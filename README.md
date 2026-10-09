@@ -1,72 +1,66 @@
-# SafeBuddy Flutter App
+# SafeBuddy — 藍牙／Wi-Fi 防身警報裝置與求助聯動系統
 
-SafeBuddy is a mobile application designed to enhance personal safety by providing real-time information about crime hotspots and traffic accident zones. The app notifies users of danger zones and includes a demo mode for simulating location changes.
+> 國立中央大學資工系 團隊專題　｜　指導教授：周立德 教授　｜　成員：陳孟蓉、郭語婕、江玉如
+> 🥉 計算機網路應用創意競賽 銅牌獎
 
-## Features
+SafeBuddy 是一套軟硬體整合的個人安全系統：使用者按下隨身的 ESP32 警報按鈕後，裝置會鳴笛、閃燈，並透過藍牙或 Wi-Fi 通知電腦端 App；App 再呼叫後端服務，以簡訊將求助訊息與目前位置傳給緊急聯絡人。App 同時以地圖呈現交通事故熱區，使用者接近高風險區域時會收到提醒。
 
-- **Map Integration**: Displays a map with crime hotspots and traffic accident zones.
-- **Danger Zone Notifications**: Alerts users when they enter a danger zone.
-- **Demo Mode**: Allows users to manually move their location on the map for testing purposes.
-- **User-Friendly Interface**: Intuitive design for easy navigation and access to features.
+## 系統架構
 
-## Project Structure
+```
+ ┌──────────────┐  Bluetooth Serial / HTTP   ┌──────────────────────┐   REST API   ┌──────────────────────┐
+ │ ESP32 警報器 │ ─────────────────────────▶ │ Flutter App (Windows)│ ───────────▶ │ Node.js / Express    │
+ │ 按鈕・蜂鳴器 │ ◀───────────────────────── │ 地圖・熱區・通知      │ ◀─────────── │ 後端服務              │
+ │ 紅／黃 LED   │      狀態指令 (W / A / S)  └──────────────────────┘              └─────────┬────────────┘
+ └──────────────┘                                                                            │ Twilio SMS
+                                                                                             ▼
+                                                                                      緊急聯絡人手機
+```
 
-The project is organized into the following directories:
+| 模組 | 內容 | 主要檔案 |
+|---|---|---|
+| 硬體端 | ESP32：觸發／取消按鈕、蜂鳴器、紅黃 LED，三段狀態（待機／警告／警報）。提供藍牙序列與 Wi-Fi HTTP 兩種連線版本 | `esp32/bluetooth.ino`、`esp32/wifi.ino` |
+| App 端 | Flutter（Windows 桌面）：接收裝置訊號、`flutter_map` 地圖、事故熱區疊圖、危險區域通知、使用者登入與資料管理（SQLite） | `lib/` |
+| 後端 | Express API：`/api/alert` 發送求助簡訊、`/api/cancel` 解除警報、`/api/check-risk` 位置風險評分、`/api/notify-family` 通知家人 | `backend_mock.js` |
+| 熱區資料 | 以 2024 年桃園市交通事故資料（約 9.2 萬筆）做 DBSCAN 空間聚類，依事故密度輸出高／中／低三級 GeoJSON 熱區 | `generate_hotzones.py`、`assets/hotzones/` |
 
-- **lib/**: Contains the main application code.
-  - **models/**: Data models for risk information, location, and danger zones.
-  - **services/**: Classes for API interactions, location management, and notifications.
-  - **screens/**: UI screens for home, map, and settings.
-  - **widgets/**: Reusable UI components.
-  - **utils/**: Utility functions and constants.
+## 技術重點
 
-- **assets/**: Contains image assets used in the app.
+- **雙通道裝置連線**：同一套 App 邏輯支援藍牙序列（`lib/main.dart`）與 Wi-Fi HTTP 輪詢（`lib/wifi_main.dart`），斷線時自動重試。
+- **資料驅動的危險區域**：以 DBSCAN（eps ≈ 1.1 km）對事故座標分群，再依群內事故數分級，取代人工標註。
+- **求助流程閉環**：按鈕觸發 → App 取得位置 → 後端以 Twilio 傳送含座標的簡訊 → 可由裝置或 App 取消。
 
-- **test/**: Contains widget tests to ensure UI functionality.
+## 執行方式
 
-## Setup Instructions
+**1. 後端**
 
-**Clone the Repository**:
-   ```
-   git clone <repository-url>
-   cd safebuddy
-   ```
-
-
-**Install Node.js dependencies**
+```bash
 npm install
+cp .env.example .env   # 填入 Twilio 帳號、寄件號碼與聯絡人號碼
+npm start              # 預設 http://localhost:3000
+```
 
-npm install twilio
+**2. Flutter App（Windows）**
 
-**Start the backend server**
-npm start
-- **You should see:**
-SafeBuddy Backend Server
-Server running on http://localhost:3000
-
-**Navigate to project root**
-cd C:\Users\mengr\safebuddy
-
-**Clean previous builds**
-flutter clean
-
-**Install Flutter dependencies**
+```bash
 flutter pub get
-
-**Run the app on Windows**
 flutter run -d windows
+```
 
-## Usage
+藍牙版請先在 `lib/main.dart` 設定裝置的 COM port；Wi-Fi 版請在 `lib/wifi_main.dart` 設定 ESP32 的 IP。
 
-- Launch the app to view the home screen.
-- Navigate to the map screen to see crime hotspots and traffic accident zones.
-- Enable notifications to receive alerts when entering danger zones.
-- Use the demo mode to simulate location changes.
+**3. ESP32**
 
-## Contributing
+以 Arduino IDE 開啟 `esp32/bluetooth.ino` 或 `esp32/wifi.ino` 上傳至 ESP32（Wi-Fi 版需先填入網路名稱與密碼）。
 
-Contributions are welcome! Please submit a pull request or open an issue for any suggestions or improvements.
+**4. 重新產生熱區（選用）**
 
-## License
+```bash
+pip install numpy scikit-learn shapely geojson
+python generate_hotzones.py
+```
 
-This project is licensed under the MIT License. See the LICENSE file for details.
+## 目前限制
+
+- 位置風險評分（`/api/check-risk`）目前為規則式模擬：依夜間時段與距熱區遠近加權，尚未接入預測模型。
+- App 以 Windows 桌面版開發與展示，行動裝置版本尚未建置。
